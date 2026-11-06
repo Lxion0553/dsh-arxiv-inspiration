@@ -151,10 +151,6 @@ After the restart the settings page gains an "arXiv Inspiration" section, and
 sessions gain the `arxiv_inspiration` and `arxiv_knowledge_base` tools (open a
 new session after install — tools are bound per session at creation).
 
-The client half only needs the DSH Web shell: `react` and the
-`settings.section` slot. It has no third-party UI dependencies, so no
-additional entries are needed in `dsh.client.inject`.
-
 ## Configuration
 
 Via the settings page (persisted to `~/.dsh-arxiv-inspiration/config.json`):

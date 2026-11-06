@@ -130,9 +130,6 @@ dsh plugin --profile web add github:Lxion0553/dsh-arxiv-inspiration
 重启后设置页出现 "arXiv Inspiration" 区块；会话获得 `arxiv_inspiration`
 与 `arxiv_knowledge_base` 工具（工具在会话创建时绑定，安装后需新开会话）。
 
-前端只依赖 DSH Web 外壳提供的 `react` 与 `settings.section` 插槽，没有第三方
-UI 依赖，因此 `dsh.client.inject` 无需再填任何条目。
-
 ## 配置
 
 经设置页配置（持久化到 `~/.dsh-arxiv-inspiration/config.json`）：类目、
