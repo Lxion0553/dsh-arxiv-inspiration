@@ -2,7 +2,7 @@
 
 > [中文文档](README.zh-CN.md)
 
-A [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/dsh) plugin that turns
+A DeepSeek Harness (DSH) plugin that turns
 arXiv into a personalized research-inspiration feed: on-demand surveys filtered
 by a local interest knowledge base + LLM ranking, a settings-page UI to review
 and give feedback, an accumulating paper library, and full-text deep-read notes.
@@ -43,7 +43,7 @@ and give feedback, an accumulating paper library, and full-text deep-read notes.
 
 ## Requirements
 
-- DSH host (see `dsh.engines` in package.json).
+- DSH host >=0.1.5-rc.1.
 - An LLM provider configured in DSH (the plugin uses the host `llm` service
   and your session model selection by default; a specific provider/model can
   be pinned in settings).
