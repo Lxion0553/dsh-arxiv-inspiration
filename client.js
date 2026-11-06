@@ -12,6 +12,46 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const { useState, useEffect, useCallback, useRef } = React;
+/**
+ * Display-only LaTeX cleanup: converts the common subset found in abstracts
+ * and LLM-written Chinese notes (greek letters, \times, sub/superscripts,
+ * $...$ delimiters) into unicode so plain-text UI shows real formulas.
+ * Anything unrecognized is left untouched. Safe to run on any string.
+ */
+function mathToUnicode(text) {
+  if (typeof text !== 'string') return text;
+  if (!text.includes('$') && !text.includes('\\')) return text;
+  const GREEK = { alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ε',varepsilon:'ε',zeta:'ζ',eta:'η',theta:'θ',vartheta:'ϑ',iota:'ι',kappa:'κ',lambda:'λ',mu:'μ',nu:'ν',xi:'ξ',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',upsilon:'υ',phi:'φ',varphi:'φ',chi:'χ',psi:'ψ',omega:'ω',Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Phi:'Φ',Psi:'Ψ',Omega:'Ω' };
+  const SYM = { times:'×',div:'÷',pm:'±',mp:'∓',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',sim:'∼',propto:'∝',infty:'∞',partial:'∂',nabla:'∇',cdot:'·',cdots:'⋯',ldots:'…',dots:'…',rightarrow:'→',to:'→',leftarrow:'←',Rightarrow:'⇒',mapsto:'↦',langle:'⟨',rangle:'⟩',lesssim:'≲',gtrsim:'≳',equiv:'≡',perp:'⊥',parallel:'∥',in:'∈',circ:'∘',degree:'°',prime:'′',hbar:'ℏ',ell:'ℓ' };
+  const SUP = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','=':'⁼','(':'⁽',')':'⁾','n':'ⁿ','i':'ⁱ' };
+  const SUB = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','=':'₌','(':'₍',')':'₎','a':'ₐ','e':'ₑ','i':'ᵢ','o':'ₒ','x':'ₓ' };
+  const convert = (src) => {
+    let t = src;
+    for (let i = 0; i < 4; i += 1) {
+      const before = t;
+      t = t.replace(/\\sqrt\{([^{}]*)\}/g, '√($1)');
+      t = t.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)');
+      t = t.replace(/\\(?:text|mathrm|mathbf|mathit|emph|operatorname)\{([^{}]*)\}/g, '$1');
+      if (t === before) break;
+    }
+    t = t.replace(/\\([A-Za-z]+)/g, (m, name) => GREEK[name] ?? SYM[name] ?? name);
+    const script = (inner, map) => {
+      const out = [...inner].map((c) => map[c] ?? null);
+      return out.every(Boolean) ? out.join('') : null;
+    };
+    t = t.replace(/\^\{([^{}]*)\}/g, (m, inner) => script(inner, SUP) ?? `^(${inner})`);
+    t = t.replace(/_\{([^{}]*)\}/g, (m, inner) => script(inner, SUB) ?? `_(${inner})`);
+    t = t.replace(/\^([A-Za-z0-9+\-=])/g, (m, c) => SUP[c] ?? m);
+    t = t.replace(/_([A-Za-z0-9+\-=])/g, (m, c) => SUB[c] ?? m);
+    t = t.replace(/\\[,;!]/g, ' ');
+    return t;
+  };
+  // Only rewrite $...$ spans that actually look like math (protects "$5 ... $10").
+  return text.replace(/\$([^$\n]+)\$/g, (m, inner) =>
+    /[\\^_]/.test(inner) ? convert(inner) : m,
+  );
+}
+
 
     const API = '/arxiv-inspiration/api';
     const WEEKDAYS = [
@@ -326,16 +366,16 @@ window.__ModuleLoader__.load({
             h('div', { key: p.arxiv_id, className: 'arxiv-paper', style: { marginTop: i === 0 ? 4 : 10 } },
               h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title' },
                 `${i + 1}. ${p.title}`),
-              p.title_zh ? h('div', { className: 'arxiv-title-zh' }, p.title_zh) : null,
+              p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
               h('div', { className: 'arxiv-meta' },
                 `${(p.categories || []).join(', ')} · 相关度 ${p.score ?? '-'}/40 · ${p.arxiv_id}`),
-              h('div', { className: 'arxiv-quote' }, p.abstract),
+              h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
               p.abstract_zh
-                ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, p.abstract_zh)
+                ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh))
                 : h('div', { className: 'arxiv-meta' }, '（中文摘要缺失）'),
-              p.reason ? h('div', { className: 'arxiv-abs' }, `推荐理由：${p.reason}`) : null,
-              p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${p.inspiration}`) : null,
-              p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${p.suggested_action}`) : null,
+              p.reason ? h('div', { className: 'arxiv-abs' }, `推荐理由：${mathToUnicode(p.reason)}`) : null,
+              p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${mathToUnicode(p.inspiration)}`) : null,
+              p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
               p.pdf_analysis_summary || p.pdf_analysis
                 ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '' })
                 : null,
@@ -543,7 +583,7 @@ window.__ModuleLoader__.load({
           : papers.map((p) =>
               h('div', { key: p.arxiv_id, className: 'arxiv-paper' },
                 h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title' }, p.title),
-                p.title_zh ? h('div', { className: 'arxiv-title-zh' }, p.title_zh) : null,
+                p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
                 h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
                   h('span', { className: 'arxiv-meta' },
                     `${(p.categories ?? []).join(', ')} · ${p.arxiv_id} · ` +
@@ -554,8 +594,8 @@ window.__ModuleLoader__.load({
                   h('button', { className: 'arxiv-fb', type: 'button', onClick: () => setExpanded(expanded === p.arxiv_id ? null : p.arxiv_id) },
                     expanded === p.arxiv_id ? '收起' : '摘要')),
                 expanded === p.arxiv_id ? h('div', null,
-                  h('div', { className: 'arxiv-quote' }, p.abstract),
-                  p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, p.abstract_zh) : null,
+                  h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
+                  p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh)) : null,
                   p.pdf_analysis || p.has_analysis ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary }) : null,
                   h(PaperNotes, { arxivId: p.arxiv_id })) : null)),
       );
@@ -577,7 +617,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'arxiv-deepread' },
           h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点'),
           (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
-            h('div', { key: i, style: { paddingLeft: 8 } }, line)),
+            h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
           h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer },
             '📄 查看完整深读笔记 ↗')));
     }
