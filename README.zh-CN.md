@@ -2,7 +2,7 @@
 
 > 中文文档 | [English](README.md)
 
-一个 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/dsh) 插件：把 arXiv
+一个 DeepSeek Harness (DSH) 插件：把 arXiv
 变成个性化的科研灵感源——按本地兴趣知识库 + LLM 排序的按需调研、设置页内
 查看与反馈的图形界面、持续累积的论文库，以及全文深读笔记。
 
