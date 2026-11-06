@@ -22,7 +22,7 @@ function mathToUnicode(text) {
   if (typeof text !== 'string') return text;
   if (!text.includes('$') && !text.includes('\\') && !text.includes('^') && !text.includes('_')) return text;
   const GREEK = { alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ε',varepsilon:'ε',zeta:'ζ',eta:'η',theta:'θ',vartheta:'ϑ',iota:'ι',kappa:'κ',lambda:'λ',mu:'μ',nu:'ν',xi:'ξ',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',upsilon:'υ',phi:'φ',varphi:'φ',chi:'χ',psi:'ψ',omega:'ω',Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Phi:'Φ',Psi:'Ψ',Omega:'Ω' };
-  const SYM = { times:'×',div:'÷',pm:'±',mp:'∓',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',sim:'∼',propto:'∝',infty:'∞',partial:'∂',nabla:'∇',cdot:'·',cdots:'⋯',ldots:'…',dots:'…',rightarrow:'→',to:'→',leftarrow:'←',Rightarrow:'⇒',mapsto:'↦',langle:'⟨',rangle:'⟩',lesssim:'≲',gtrsim:'≳',equiv:'≡',perp:'⊥',parallel:'∥',in:'∈',circ:'∘',degree:'°',prime:'′',hbar:'ℏ',ell:'ℓ',odot:'⊙',oplus:'⊕',otimes:'⊗',ast:'∗',star:'⋆',wedge:'∧',vee:'∨',cup:'∪',cap:'∩',subset:'⊂',subseteq:'⊆',emptyset:'∅',varnothing:'∅',forall:'∀',exists:'∃',neg:'¬',simeq:'≃',asymp:'≍',cong:'≅',ll:'≪',gg:'≫',sum:'∑',prod:'∏',int:'∫' };;
+  const SYM = { times:'×',div:'÷',pm:'±',mp:'∓',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',sim:'∼',propto:'∝',infty:'∞',partial:'∂',nabla:'∇',cdot:'·',cdots:'⋯',ldots:'…',dots:'…',rightarrow:'→',to:'→',leftarrow:'←',Rightarrow:'⇒',mapsto:'↦',langle:'⟨',rangle:'⟩',lesssim:'≲',gtrsim:'≳',equiv:'≡',perp:'⊥',parallel:'∥',in:'∈',circ:'∘',degree:'°',prime:'′',hbar:'ℏ',ell:'ℓ',mid:'∣',odot:'⊙',oplus:'⊕',otimes:'⊗',ast:'∗',star:'⋆',wedge:'∧',vee:'∨',cup:'∪',cap:'∩',subset:'⊂',subseteq:'⊆',emptyset:'∅',varnothing:'∅',forall:'∀',exists:'∃',neg:'¬',simeq:'≃',asymp:'≍',cong:'≅',ll:'≪',gg:'≫',sum:'∑',prod:'∏',int:'∫' };;
   const SUP = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','=':'⁼','(':'⁽',')':'⁾','n':'ⁿ','i':'ⁱ' };
   const SUB = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','=':'₌','(':'₍',')':'₎','a':'ₐ','e':'ₑ','i':'ᵢ','o':'ₒ','x':'ₓ' };
   const script = (inner, map) => {
@@ -78,7 +78,7 @@ function mathToUnicode(text) {
   return bare(text
     .replace(/\$\$([\s\S]+?)\$\$/g, (m, inner) => display(inner))
     .replace(/\$([^$\n]+)\$/g, (m, inner) =>
-      /[\\^_]/.test(inner) ? convert(inner) : m));
+      /[\\^_]/.test(inner) || (inner.length <= 8 && !/\s/.test(inner)) ? convert(inner) : m));
 }
 
 
