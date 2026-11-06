@@ -1,0 +1,21 @@
+{
+  "name": "dsh-arxiv-inspiration",
+  "version": "0.5.0",
+  "type": "module",
+  "description": "arXiv research-inspiration for DSH: on-demand surveys filtered by a local interest knowledge base and LLM ranking, with a settings-page UI, accumulating paper library, deep-read notes, and profile evolution.",
+  "exports": { ".": "./plugin.js", "./client": "./client.js" },
+  "engines": { "node": ">=22" },
+  "dsh": {
+    "engines": { "dsh": ">=0.1.5-rc.1" },
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  },
+  "meta": {
+    "title": "arXiv Inspiration",
+    "description": "On-demand arXiv research surveys: configure categories and weekdays, run a survey, review recommended papers, give feedback, and push digests into conversations."
+  }
+}

@@ -1,0 +1,4 @@
+- insert:
+    - id: arxiv-inspiration
+      name: dsh-arxiv-inspiration
+      config: {}
