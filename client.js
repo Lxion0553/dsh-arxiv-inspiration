@@ -78,7 +78,12 @@ function mathToUnicode(text) {
   return bare(text
     .replace(/\$\$([\s\S]+?)\$\$/g, (m, inner) => display(inner))
     .replace(/\$([^$\n]+)\$/g, (m, inner) =>
-      /[\\^_]/.test(inner) || (inner.length <= 8 && !/\s/.test(inner)) ? convert(inner) : m));
+      // Math if it has LaTeX/scripts, is a short space-free token, or is a
+      // short math-only expression (variables, tuples, equations — no CJK).
+      /[\\^_]/.test(inner)
+      || (inner.length <= 8 && !/\s/.test(inner))
+      || (inner.length <= 24 && !/[\u4e00-\u9fff]/.test(inner) && /^[A-Za-z0-9()\[\]<>,.\s,=+\-|:~×·\/]+$/.test(inner))
+        ? convert(inner) : m));
 }
 
 
