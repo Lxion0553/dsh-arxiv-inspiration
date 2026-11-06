@@ -2,7 +2,7 @@
 
 > 中文文档 | [English](README.md)
 
-一个 DeepSeek Harness (DSH) 插件：把 arXiv
+一个 [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/dsh) 插件：把 arXiv
 变成个性化的科研灵感源——按本地兴趣知识库 + LLM 排序的按需调研、设置页内
 查看与反馈的图形界面、持续累积的论文库，以及全文深读笔记。
 
@@ -74,15 +74,44 @@ uv pip install --python ~/.dsh-arxiv-inspiration/.venv/bin/python pymupdf fastem
 
 ## alphaXiv 凭据（可选）
 
-alphaXiv 集成从已有的 alphaxiv MCP bundle 补丁文件
-`~/dsh-bundles/alphaxiv-mcp/cordis.patch.yml`（`Authorization: Bearer ...`
-头）读取 token。需要 alphaXiv 增援时创建该文件（或软链现有 bundle）即可。
-插件内不内嵌任何 token；文件缺失时相关功能静默降级，调研照常运行。
+可选的 alphaXiv 增援（跨类目语义发现 + 带页码引用的 PDF 问答）访问
+`https://api.alphaxiv.org/mcp/v1`，需要一个 Bearer token。插件本身**没有**
+凭据配置项——它直接复用本机已安装的 [alphaxiv MCP
+bundle](https://alphaxiv.org) 里的 token，凭据只存一处：
+
+```
+~/dsh-bundles/alphaxiv-mcp/cordis.patch.yml
+```
+
+插件在该文件中查找 `Authorization: Bearer <token>` 形式的请求头并原样
+使用。如果你已经在跑 alphaxiv MCP bundle，该文件已存在，无需任何操作。
+没有的话，按下述格式手动创建：
+
+```yaml
+- insert:
+    - id: alphaxiv-mcp
+      name: dsh-mcp-client
+      config:
+        mcpServers:
+          alphaxiv:
+            url: https://api.alphaxiv.org/mcp/v1
+            headers:
+              Authorization: Bearer 你的_ALPHAXIV_TOKEN
+```
+
+说明：
+
+- token 在 alphaXiv 账户设置中获取；发现与 PDF 问答调用会消耗你的
+  alphaXiv assistant 配额。
+- token 只留在本机，不进入插件代码与仓库。
+- 文件或 token 缺失时两个开关静默降级：调研照常运行，深读回退本地
+  PyMuPDF 提取。
+- token 在宿主运行期内缓存；修改文件后需重启 DSH 宿主生效。
 
 ## 安装
 
 ```bash
-dsh plugin add <owner>/dsh-arxiv-inspiration
+dsh plugin add Lxion0553/dsh-arxiv-inspiration
 ```
 
 安装后重启 DSH 宿主。设置页出现 "arXiv Inspiration" 区块；会话获得

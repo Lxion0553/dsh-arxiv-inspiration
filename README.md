@@ -2,7 +2,7 @@
 
 > [中文文档](README.zh-CN.md)
 
-A DeepSeek Harness (DSH) plugin that turns
+A [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/dsh) plugin that turns
 arXiv into a personalized research-inspiration feed: on-demand surveys filtered
 by a local interest knowledge base + LLM ranking, a settings-page UI to review
 and give feedback, an accumulating paper library, and full-text deep-read notes.
@@ -89,17 +89,48 @@ Notes:
 
 ## alphaXiv credentials (optional)
 
-The alphaXiv integration reads a Bearer token from an existing alphaxiv MCP
-bundle patch file at `~/dsh-bundles/alphaxiv-mcp/cordis.patch.yml`
-(`Authorization: Bearer ...` header). Create that file (or symlink your
-existing bundle) if you want alphaXiv-assisted discovery and deep-read. No
-token is embedded in the plugin; without the file those features degrade
-silently and surveys still run.
+The optional alphaXiv assist (semantic discovery + PDF Q&A with page
+citations) talks to `https://api.alphaxiv.org/mcp/v1` with a Bearer token.
+The plugin does **not** have a config field for it — it reuses the token from
+a locally installed [alphaxiv MCP bundle](https://alphaxiv.org), so the
+credential lives in exactly one place:
+
+```
+~/dsh-bundles/alphaxiv-mcp/cordis.patch.yml
+```
+
+The plugin scans that file for a header line matching
+`Authorization: Bearer <token>` and uses it as-is. If you already run the
+alphaxiv MCP bundle, the file exists and nothing to do. Otherwise create it
+manually with the same shape the bundle uses, e.g.:
+
+```yaml
+- insert:
+    - id: alphaxiv-mcp
+      name: dsh-mcp-client
+      config:
+        mcpServers:
+          alphaxiv:
+            url: https://api.alphaxiv.org/mcp/v1
+            headers:
+              Authorization: Bearer YOUR_ALPHAXIV_TOKEN
+```
+
+Notes:
+
+- Get a token from your alphaXiv account settings; calls to discovery/PDF
+  Q&A consume your alphaXiv assistant quota.
+- The token never leaves your machine; nothing is embedded in this plugin or
+  its repo.
+- No file / no token: both alphaXiv toggles degrade silently — surveys still
+  run, deep-read falls back to local PyMuPDF extraction.
+- Token cached for the host's lifetime; edit the file and restart the DSH
+  host to pick up a new one.
 
 ## Install
 
 ```bash
-dsh plugin add <owner>/dsh-arxiv-inspiration
+dsh plugin add Lxion0553/dsh-arxiv-inspiration
 ```
 
 Then restart the DSH host. The settings page gains an "arXiv Inspiration"
