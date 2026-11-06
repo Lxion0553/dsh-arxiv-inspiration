@@ -2,7 +2,7 @@
 
 > [中文文档](README.zh-CN.md)
 
-A [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/dsh) plugin that turns
+A DeepSeek Harness (DSH) plugin that turns
 arXiv into a personalized research-inspiration feed: on-demand surveys filtered
 by a local interest knowledge base + LLM ranking, a settings-page UI to review
 and give feedback, an accumulating paper library, and full-text deep-read notes.
