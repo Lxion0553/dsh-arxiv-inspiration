@@ -701,9 +701,11 @@ function mathToUnicode(text) {
           (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
             h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
           h('button', { className: 'arxiv-fb', type: 'button', onClick: toggle },
-            open ? '⌃ 收起完整笔记' : '📄 展开完整笔记'),
-          h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer, style: { marginLeft: 6 } },
-            '↗'),
+            open ? '⌃ 收起完整笔记' : '📄 展开完整笔记（本页渲染）'),
+          h('button', {
+            className: 'arxiv-fb', type: 'button', onClick: openViewer,
+            style: { marginLeft: 6 }, title: '在新标签页打开独立 HTML 页面（旧方式）',
+          }, '↗ 独立页'),
           open ? h('div', { className: 'arxiv-note' },
             busy ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
               : err ? h('div', { className: 'arxiv-sub' }, `笔记加载失败：${err}`)
