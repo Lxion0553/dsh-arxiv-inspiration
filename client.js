@@ -638,15 +638,7 @@ function mathToUnicode(text) {
           (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
             h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
           h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer },
-            '📄 查看完整深读笔记 ↗'),
-          h('button', {
-            className: 'arxiv-fb', type: 'button',
-            style: { marginLeft: 6 },
-            title: '未经综合的原始检索材料（alphaXiv 页文本），保证原意可回查',
-            onClick: () => window.open(
-              `/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis/raw`,
-              '_blank', 'noopener'),
-          }, '🧾 原始材料 ↗')));
+            '📄 查看完整深读笔记 ↗')));
     }
 
     /** Notes timeline + add-note input for one paper (P3-9). */
