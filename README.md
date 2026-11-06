@@ -130,7 +130,7 @@ Notes:
 ## Install
 
 ```bash
-dsh plugin add Lxion0553/dsh-arxiv-inspiration
+dsh plugin --profile web add github:Lxion0553/dsh-arxiv-inspiration
 ```
 
 Then restart the DSH host. The settings page gains an "arXiv Inspiration"
