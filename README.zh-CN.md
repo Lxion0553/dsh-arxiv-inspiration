@@ -111,7 +111,7 @@ bundle](https://alphaxiv.org) 里的 token，凭据只存一处：
 ## 安装
 
 ```bash
-dsh plugin add Lxion0553/dsh-arxiv-inspiration
+dsh plugin --profile web add github:Lxion0553/dsh-arxiv-inspiration
 ```
 
 安装后重启 DSH 宿主。设置页出现 "arXiv Inspiration" 区块；会话获得
