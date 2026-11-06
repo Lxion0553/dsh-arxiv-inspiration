@@ -11,6 +11,14 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react');
     const h = React.createElement;
+    // The platform's own markdown renderer (KaTeX math, tables, footnotes).
+    // Guarded: an older shell without the module keeps the unicode fallback.
+    let MarkdownText = null;
+    try {
+      MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
+    } catch {
+      MarkdownText = null;
+    }
     const { useState, useEffect, useCallback, useRef } = React;
 /**
  * Display-only LaTeX cleanup: converts the common subset found in abstracts
@@ -134,6 +142,12 @@ function mathToUnicode(text) {
 .arxiv-abs { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 .arxiv-meta { color: var(--dsw-alias-label-secondary); font-size: 11px; }
 .arxiv-fb { font-size: 12px; cursor: pointer; border-radius: 5px; padding: 3px 9px; background: transparent; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
+.arxiv-deepread { white-space: normal; }
+.arxiv-note { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; max-height: 520px; overflow: auto; white-space: normal; font-size: 13px; }
+.arxiv-note :where(h1, h2, h3, h4) { margin: 12px 0 6px; line-height: 1.4; }
+.arxiv-note :where(p, li) { white-space: normal; }
+.arxiv-note :where(pre, code) { white-space: pre-wrap; word-break: break-word; }
+.arxiv-note-pre { white-space: pre-wrap; word-break: break-word; font-size: 11.5px; }
 .arxiv-fb[data-on='true'] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
 .arxiv-error { color: var(--dsw-alias-state-error-primary); font-size: 12px; }
 .arxiv-md { display: flex; flex-direction: column; gap: 6px; }
@@ -650,6 +664,10 @@ function mathToUnicode(text) {
      * opens in its own viewer window (server-rendered page), not in the card.
      */
     function AnalysisBlock({ arxivId, summary, analysisPath }) {
+      const [open, setOpen] = useState(false);
+      const [md, setMd] = useState(null);
+      const [err, setErr] = useState(null);
+      const [busy, setBusy] = useState(false);
       const openViewer = () => {
         window.open(
           `/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis/view`,
@@ -657,20 +675,20 @@ function mathToUnicode(text) {
           'noopener',
         );
       };
-      const openInSidebar = async () => {
+      const toggle = async () => {
+        if (open) { setOpen(false); return; }
+        setOpen(true);
+        if (md !== null || busy) return;
+        setBusy(true);
         try {
-          let abs = analysisPath;
-          if (!abs) {
-            const r = await fetch(`/arxiv-inspiration/api/papers?limit=200`);
-            const data = await r.json();
-            abs = (data.papers ?? []).find((p) => p.arxiv_id === arxivId)?.analysis_path;
-          }
-          if (!abs) throw new Error('no analysis file');
-          const sidebarRight = uiCtx?.sidebarRight;
-          if (!sidebarRight?.openResource) throw new Error('sidebar unavailable');
-          sidebarRight.openResource(fileAddress(abs));
-        } catch {
-          openViewer(); // fallback: server-rendered page in a new tab
+          const r = await fetch(`/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+          setMd(data.markdown ?? '');
+        } catch (e) {
+          setErr(String((e && e.message) || e));
+        } finally {
+          setBusy(false);
         }
       };
       return h('div', { className: 'arxiv-abs' },
@@ -678,10 +696,17 @@ function mathToUnicode(text) {
           h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点'),
           (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
             h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
-          h('button', { className: 'arxiv-fb', type: 'button', onClick: openInSidebar },
-            '📄 打开完整笔记（侧边栏 md）'),
+          h('button', { className: 'arxiv-fb', type: 'button', onClick: toggle },
+            open ? '⌃ 收起完整笔记' : '📄 展开完整笔记'),
           h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer, style: { marginLeft: 6 } },
-            '↗')));
+            '↗'),
+          open ? h('div', { className: 'arxiv-note' },
+            busy ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
+              : err ? h('div', { className: 'arxiv-sub' }, `笔记加载失败：${err}`)
+                : MarkdownText
+                  ? h(MarkdownText, { text: md ?? '' })
+                  : h('pre', { className: 'arxiv-note-pre' }, mathToUnicode(md ?? ''))
+          ) : null));
     }
 
     /** Notes timeline + add-note input for one paper (P3-9). */
