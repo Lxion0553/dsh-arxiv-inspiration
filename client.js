@@ -40,6 +40,9 @@ function mathToUnicode(text) {
     t = t.replace(/\\(?:text|mathrm|mathbf|mathit|emph|operatorname|mathbb|mathcal|mathscr|mathfrak|mathsf|mathtt)\{([^{}]*)\}/g, '$1');
       if (t === before) break;
     }
+    t = t.replace(/\\(?:hat|widehat)\{([^{}]*)\}/g, '$1̂');
+    t = t.replace(/\\(?:tilde|widetilde)\{([^{}]*)\}/g, '$1̃');
+    t = t.replace(/\\bar\{([^{}]*)\}/g, '$1̄');
     t = t.replace(/\\(left|right|big|Big|bigl|bigr|Bigl|Bigr|middle)\b/g, '');
     t = t.replace(/\\\\\|/g, '‖');
     t = t.replace(/\\\|/g, '‖');
