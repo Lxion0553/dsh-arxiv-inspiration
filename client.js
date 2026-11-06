@@ -411,7 +411,7 @@ function mathToUnicode(text) {
               p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${mathToUnicode(p.inspiration)}`) : null,
               p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
               p.pdf_analysis_summary || p.pdf_analysis
-                ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '' })
+                ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '', analysisPath: p.analysis_path })
                 : null,
               h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
                 h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'interested'), type: 'button', onClick: () => sendFeedback(p, 'interested') }, '👍 感兴趣'),
@@ -640,7 +640,7 @@ function mathToUnicode(text) {
                 expanded === p.arxiv_id ? h('div', null,
                   h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
                   p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh)) : null,
-                  p.pdf_analysis || p.has_analysis ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary }) : null,
+                  p.pdf_analysis || p.has_analysis ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary, analysisPath: p.analysis_path }) : null,
                   h(PaperNotes, { arxivId: p.arxiv_id })) : null)),
       );
     }
@@ -649,7 +649,7 @@ function mathToUnicode(text) {
      * Deep-read block (C-2): Chinese bullet summary inline; the full md note
      * opens in its own viewer window (server-rendered page), not in the card.
      */
-    function AnalysisBlock({ arxivId, summary }) {
+    function AnalysisBlock({ arxivId, summary, analysisPath }) {
       const openViewer = () => {
         window.open(
           `/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis/view`,
@@ -657,13 +657,31 @@ function mathToUnicode(text) {
           'noopener',
         );
       };
+      const openInSidebar = async () => {
+        try {
+          let abs = analysisPath;
+          if (!abs) {
+            const r = await fetch(`/arxiv-inspiration/api/papers?limit=200`);
+            const data = await r.json();
+            abs = (data.papers ?? []).find((p) => p.arxiv_id === arxivId)?.analysis_path;
+          }
+          if (!abs) throw new Error('no analysis file');
+          const sidebarRight = uiCtx?.sidebarRight;
+          if (!sidebarRight?.openResource) throw new Error('sidebar unavailable');
+          sidebarRight.openResource(fileAddress(abs));
+        } catch {
+          openViewer(); // fallback: server-rendered page in a new tab
+        }
+      };
       return h('div', { className: 'arxiv-abs' },
         h('div', { className: 'arxiv-deepread' },
           h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点'),
           (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
             h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
-          h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer },
-            '📄 查看完整深读笔记 ↗')));
+          h('button', { className: 'arxiv-fb', type: 'button', onClick: openInSidebar },
+            '📄 打开完整笔记（侧边栏 md）'),
+          h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer, style: { marginLeft: 6 } },
+            '↗')));
     }
 
     /** Notes timeline + add-note input for one paper (P3-9). */
@@ -794,9 +812,17 @@ function mathToUnicode(text) {
       }
     }
 
+    // Client context bridge: components call uiCtx.sidebarRight.openResource()
+    // to open md notes in the Web GUI sidebar document preview.
+    let uiCtx = null;
+    const fileAddress = (absolutePath) => `dsh-resource://file/absolute/${
+      String(absolutePath).replace(/\\/g, '/').split('/').filter(Boolean)
+        .map((seg) => encodeURIComponent(seg)).join('/')}`;
+
     return {
-      inject: ['slots'],
+      inject: ['slots', 'sidebarRight'],
       apply(ctx) {
+        uiCtx = ctx;
         ensureStyleTag();
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(
