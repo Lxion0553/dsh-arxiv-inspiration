@@ -70,7 +70,8 @@ export function apply(ctx) {
           minimum: 0,
           description:
             'How many curated papers to recommend. Defaults to the plugin configuration; ' +
-            '0 means no limit (every curated recommendation).',
+            '0 means follow the configured pushCount (the paper budget for this survey). ' +
+            'It can never exceed pushCount, which itself is capped at 50.',
         },
         research_context: {
           type: 'string',
@@ -96,6 +97,8 @@ export function apply(ctx) {
         includeCrossList:
           typeof args.include_cross_list === 'boolean' ? args.include_cross_list : config.includeCrossList,
         maxPush: args.max_push ?? config.maxPush,
+        // 推送篇数只来自配置：它是推荐数的天花板，不是单次调用的选择项。
+        pushCount: config.pushCount,
         researchContext:
           typeof args.research_context === 'string' && args.research_context.trim()
             ? args.research_context

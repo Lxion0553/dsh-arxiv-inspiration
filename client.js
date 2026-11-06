@@ -125,11 +125,12 @@ window.__ModuleLoader__.load({
         Field('推荐数 Max',
           h('div', { className: 'arxiv-row' },
             h('input', {
-              className: 'arxiv-input', type: 'number', min: 0, value: config.maxPush ?? 0,
+              className: 'arxiv-input', type: 'number', min: 0, max: config.pushCount > 0 ? config.pushCount : 50,
+              value: config.maxPush ?? 0,
               onChange: (e) => setConfig({ ...config, maxPush: Math.max(0, Math.floor(Number(e.target.value) || 0)) }),
               style: { maxWidth: 90 },
             }),
-            h('span', { className: 'arxiv-meta' }, '0 = 不限制（展示启发阶段产出的全部推荐）'))),
+            h('span', { className: 'arxiv-meta' }, '0 = 跟随推送篇数（推荐全部）。不得超过推送篇数；喂给 LLM 的篇数也跟随此值。'))),
         Field('混合召回',
           h('div', { className: 'arxiv-row' },
             h('button', {
@@ -207,11 +208,11 @@ window.__ModuleLoader__.load({
         Field('推送篇数 Push',
           h('div', { className: 'arxiv-row' },
             h('input', {
-              className: 'arxiv-input', type: 'number', min: 0, value: config.pushCount ?? 0,
+              className: 'arxiv-input', type: 'number', min: 0, max: 50, value: config.pushCount ?? 0,
               onChange: (e) => setConfig({ ...config, pushCount: Math.max(0, Math.floor(Number(e.target.value) || 0)) }),
               style: { maxWidth: 90 },
             }),
-            h('span', { className: 'arxiv-meta' }, '0 = 不限制（注入全部精排论文）'))),
+            h('span', { className: 'arxiv-meta' }, '本次调研的论文预算：注入给 agent 的条数上限，也是推荐数的天花板。0 = 上限 50。'))),
         h('div', { className: 'arxiv-row' },
           h('span', { className: 'arxiv-label' }, '注入提示词'),
           h('textarea', {
@@ -302,7 +303,10 @@ window.__ModuleLoader__.load({
               (result
                 ? `抓取 ${result.fetched_count ?? '-'}` +
                   (result.carryover_count ? ` + 回捞 ${result.carryover_count}` : '') +
-                  ` → 候选 ${result.candidate_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇`
+                  ` → 候选 ${result.candidate_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇` +
+                  (result.push_limits
+                    ? `（预算 ${result.push_limits.maxPush}/${result.push_limits.pushCount}）`
+                    : '')
                 : '')),
             result?.recall ? h('span', { className: 'arxiv-meta' },
               `召回：关键词 ${result.recall.keyword_lane} / 语义 ${result.recall.semantic_lane}` +
