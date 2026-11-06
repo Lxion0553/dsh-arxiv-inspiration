@@ -123,11 +123,13 @@ window.__ModuleLoader__.load({
               title: '深读优先走 alphaXiv PDF 查询（只读相关页，省 token；失败回退本地 PyMuPDF 全文分析）',
             }, config.useAlphaxivDeepRead !== false ? '深读：alphaXiv 优先' : '深读：仅本地'))),
         Field('推荐数 Max',
-          h('input', {
-            className: 'arxiv-input', type: 'number', min: 1, max: 5, value: config.maxPush,
-            onChange: (e) => setConfig({ ...config, maxPush: Number(e.target.value) || 5 }),
-            style: { maxWidth: 90 },
-          })),
+          h('div', { className: 'arxiv-row' },
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 0, value: config.maxPush ?? 0,
+              onChange: (e) => setConfig({ ...config, maxPush: Math.max(0, Math.floor(Number(e.target.value) || 0)) }),
+              style: { maxWidth: 90 },
+            }),
+            h('span', { className: 'arxiv-meta' }, '0 = 不限制（展示启发阶段产出的全部推荐）'))),
         Field('混合召回',
           h('div', { className: 'arxiv-row' },
             h('button', {
@@ -203,11 +205,13 @@ window.__ModuleLoader__.load({
               (modelCatalog?.models?.[config.provider] ?? []).map((m) =>
                 h('option', { key: m.id, value: m.id }, m.name || m.id))))),
         Field('推送篇数 Push',
-          h('input', {
-            className: 'arxiv-input', type: 'number', min: 1, max: 20, value: config.pushCount ?? 15,
-            onChange: (e) => setConfig({ ...config, pushCount: Math.max(1, Math.min(20, Number(e.target.value) || 15)) }),
-            style: { maxWidth: 90 },
-          })),
+          h('div', { className: 'arxiv-row' },
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 0, value: config.pushCount ?? 0,
+              onChange: (e) => setConfig({ ...config, pushCount: Math.max(0, Math.floor(Number(e.target.value) || 0)) }),
+              style: { maxWidth: 90 },
+            }),
+            h('span', { className: 'arxiv-meta' }, '0 = 不限制（注入全部精排论文）'))),
         h('div', { className: 'arxiv-row' },
           h('span', { className: 'arxiv-label' }, '注入提示词'),
           h('textarea', {

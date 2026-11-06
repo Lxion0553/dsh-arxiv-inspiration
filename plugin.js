@@ -67,7 +67,10 @@ export function apply(ctx) {
         },
         max_push: {
           type: 'integer',
-          description: 'Max papers to recommend. Default 5, hard cap 5.',
+          minimum: 0,
+          description:
+            'How many curated papers to recommend. Defaults to the plugin configuration; ' +
+            '0 means no limit (every curated recommendation).',
         },
         research_context: {
           type: 'string',
