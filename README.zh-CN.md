@@ -34,7 +34,7 @@
 
 ## 环境要求
 
-- DSH 宿主（版本要求见 package.json 的 `dsh.engines`）。
+- DSH >=0.1.5-rc.1。
 - DSH 中已配置 LLM provider（插件使用宿主 `llm` 服务，默认跟随会话模型
   选择；也可在设置页固定 provider/model）。
 - Node.js >= 22。
