@@ -209,6 +209,14 @@ export function apply(ctx) {
           type: 'integer',
           description: 'For search_papers: max results. Default 20, cap 100.',
         },
+        sort: {
+          type: 'string',
+          enum: ['recent', 'score', 'unjudged', 'deepread'],
+          description:
+            'For search_papers: result order — recent (last_seen desc, default), ' +
+            'score (best survey score desc), unjudged (no feedback first, then score), ' +
+            'deepread (papers with a deep-read note first, then score).',
+        },
         text: {
           type: 'string',
           description:
@@ -287,6 +295,7 @@ export function apply(ctx) {
             since: args.since || undefined,
             feedback: args.feedback || undefined,
             limit: Math.min(100, Number(args.limit) || 20),
+            sort: String(args.sort ?? 'recent'),
           });
           const total = (await kb.listPapers()).length;
           // Lossless-JSON guard: zh/score/feedback fields may be undefined.

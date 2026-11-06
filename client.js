@@ -512,6 +512,7 @@ function mathToUnicode(text) {
       const [query, setQuery] = useState('');
       const [semantic, setSemantic] = useState(false);
       const [feedback, setFeedback] = useState('');
+      const [sort, setSort] = useState('recent');
       const [expanded, setExpanded] = useState(null);
       const [error, setError] = useState('');
       const [addId, setAddId] = useState('');
@@ -536,7 +537,7 @@ function mathToUnicode(text) {
       const search = async () => {
         setError('');
         try {
-          const params = new URLSearchParams({ query, feedback, semantic: String(semantic), limit: '50' });
+          const params = new URLSearchParams({ query, feedback, sort, semantic: String(semantic), limit: '50' });
           onLoadLibrary(await api(`/papers?${params}`));
         } catch (e) {
           setError(e.message);
@@ -561,6 +562,15 @@ function mathToUnicode(text) {
             h('option', { value: 'interested' }, '👍 感兴趣'),
             h('option', { value: 'read' }, '📖 已读'),
             h('option', { value: 'not_interested' }, '👎 不感兴趣')),
+          h('select', {
+            className: 'arxiv-select', value: sort,
+            onChange: (e) => { setSort(e.target.value); setTimeout(search, 0); },
+            title: '排序方式',
+          },
+            h('option', { value: 'recent' }, '最新入库'),
+            h('option', { value: 'score' }, '最高评分'),
+            h('option', { value: 'unjudged' }, '待反馈优先'),
+            h('option', { value: 'deepread' }, '深读优先')),
           h('button', {
             className: 'arxiv-chip', 'data-on': String(semantic), type: 'button',
             role: 'switch', 'aria-checked': String(semantic),
