@@ -20,11 +20,15 @@ window.__ModuleLoader__.load({
  */
 function mathToUnicode(text) {
   if (typeof text !== 'string') return text;
-  if (!text.includes('$') && !text.includes('\\')) return text;
+  if (!text.includes('$') && !text.includes('\\') && !text.includes('^') && !text.includes('_')) return text;
   const GREEK = { alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ε',varepsilon:'ε',zeta:'ζ',eta:'η',theta:'θ',vartheta:'ϑ',iota:'ι',kappa:'κ',lambda:'λ',mu:'μ',nu:'ν',xi:'ξ',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',upsilon:'υ',phi:'φ',varphi:'φ',chi:'χ',psi:'ψ',omega:'ω',Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Phi:'Φ',Psi:'Ψ',Omega:'Ω' };
   const SYM = { times:'×',div:'÷',pm:'±',mp:'∓',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',sim:'∼',propto:'∝',infty:'∞',partial:'∂',nabla:'∇',cdot:'·',cdots:'⋯',ldots:'…',dots:'…',rightarrow:'→',to:'→',leftarrow:'←',Rightarrow:'⇒',mapsto:'↦',langle:'⟨',rangle:'⟩',lesssim:'≲',gtrsim:'≳',equiv:'≡',perp:'⊥',parallel:'∥',in:'∈',circ:'∘',degree:'°',prime:'′',hbar:'ℏ',ell:'ℓ' };
   const SUP = { '0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','=':'⁼','(':'⁽',')':'⁾','n':'ⁿ','i':'ⁱ' };
   const SUB = { '0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','=':'₌','(':'₍',')':'₎','a':'ₐ','e':'ₑ','i':'ᵢ','o':'ₒ','x':'ₓ' };
+  const script = (inner, map) => {
+    const out = [...inner].map((c) => map[c] ?? null);
+    return out.every(Boolean) ? out.join('') : null;
+  };
   const convert = (src) => {
     let t = src;
     for (let i = 0; i < 4; i += 1) {
@@ -35,10 +39,6 @@ function mathToUnicode(text) {
       if (t === before) break;
     }
     t = t.replace(/\\([A-Za-z]+)/g, (m, name) => GREEK[name] ?? SYM[name] ?? name);
-    const script = (inner, map) => {
-      const out = [...inner].map((c) => map[c] ?? null);
-      return out.every(Boolean) ? out.join('') : null;
-    };
     t = t.replace(/\^\{([^{}]*)\}/g, (m, inner) => script(inner, SUP) ?? `^(${inner})`);
     t = t.replace(/_\{([^{}]*)\}/g, (m, inner) => script(inner, SUB) ?? `_(${inner})`);
     t = t.replace(/\^([A-Za-z0-9+\-=])/g, (m, c) => SUP[c] ?? m);
@@ -46,10 +46,19 @@ function mathToUnicode(text) {
     t = t.replace(/\\[,;!]/g, ' ');
     return t;
   };
-  // Only rewrite $...$ spans that actually look like math (protects "$5 ... $10").
-  return text.replace(/\$([^$\n]+)\$/g, (m, inner) =>
+  // Bare LaTeX fragments outside $...$: known \commands and ^{..}/_{..}/^c/_c
+  // scripts. Safe for prose: ^ _ \ essentially never occur in normal Chinese/English text.
+  const bare = (t) => t
+    .replace(/\\([A-Za-z]+)/g, (m, name) => GREEK[name] ?? SYM[name] ?? m)
+    .replace(/\^\{([^{}]*)\}/g, (m, inner) => script(inner, SUP) ?? `^(${inner})`)
+    .replace(/_\{([^{}]*)\}/g, (m, inner) => script(inner, SUB) ?? m)
+    .replace(/\^([A-Za-z0-9+\-=])/g, (m, c) => SUP[c] ?? m)
+    .replace(/_([A-Za-z0-9+\-=])/g, (m, c) => SUB[c] ?? m);
+  // Only rewrite $...$ spans that actually look like math (protects "$5 ... $10");
+  // then sweep bare fragments in the remaining plain text.
+  return bare(text.replace(/\$([^$\n]+)\$/g, (m, inner) =>
     /[\\^_]/.test(inner) ? convert(inner) : m,
-  );
+  ));
 }
 
 
@@ -512,7 +521,7 @@ function mathToUnicode(text) {
       const [query, setQuery] = useState('');
       const [semantic, setSemantic] = useState(false);
       const [feedback, setFeedback] = useState('');
-      const [sort, setSort] = useState('recent');
+      const [sort, setSort] = useState('deepread'); // 论文库默认已深读优先
       const [expanded, setExpanded] = useState(null);
       const [error, setError] = useState('');
       const [addId, setAddId] = useState('');
@@ -629,7 +638,15 @@ function mathToUnicode(text) {
           (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
             h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
           h('button', { className: 'arxiv-fb', type: 'button', onClick: openViewer },
-            '📄 查看完整深读笔记 ↗')));
+            '📄 查看完整深读笔记 ↗'),
+          h('button', {
+            className: 'arxiv-fb', type: 'button',
+            style: { marginLeft: 6 },
+            title: '未经综合的原始检索材料（alphaXiv 页文本），保证原意可回查',
+            onClick: () => window.open(
+              `/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis/raw`,
+              '_blank', 'noopener'),
+          }, '🧾 原始材料 ↗')));
     }
 
     /** Notes timeline + add-note input for one paper (P3-9). */
