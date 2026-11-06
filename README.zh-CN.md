@@ -111,17 +111,47 @@ bundle](https://alphaxiv.org) 里的 token，凭据只存一处：
 ## 安装
 
 ```bash
+# 1. 把包拉进 profile
 dsh plugin --profile web add github:Lxion0553/dsh-arxiv-inspiration
 ```
 
-安装后重启 DSH 宿主。设置页出现 "arXiv Inspiration" 区块；会话获得
-`arxiv_inspiration` 与 `arxiv_knowledge_base` 工具（安装后需新开会话）。
+```jsonc
+// 2. 在 ~/.dsh/profiles/web/package.json 里登记 bundle
+//    （加到已有的 dsh.profile.bundles 数组中）
+"dsh": { "profile": { "bundles": [ /* … */, "dsh-arxiv-inspiration" ] } }
+```
+
+3. 重启 DSH 宿主。
+
+第 2 步对 CLI 安装是必须的：`dsh plugin add` 只负责取包，只有登记在
+`dsh.profile.bundles` 里的 bundle 才会把它的 `cordis.patch.yml` 组合进运行
+配置。从 GUI 插件市场安装会自动完成这两步。
+
+重启后设置页出现 "arXiv Inspiration" 区块；会话获得 `arxiv_inspiration`
+与 `arxiv_knowledge_base` 工具（工具在会话创建时绑定，安装后需新开会话）。
+
+前端只依赖 DSH Web 外壳提供的 `react` 与 `settings.section` 插槽，没有第三方
+UI 依赖，因此 `dsh.client.inject` 无需再填任何条目。
 
 ## 配置
 
 经设置页配置（持久化到 `~/.dsh-arxiv-inspiration/config.json`）：类目、
 星期、cross-list 开关、每期推荐上限、LLM provider/model、推送数量与提示词、
 研究背景、alphaXiv 开关。
+
+召回调参（同一页面）：
+
+- **混合召回**：过滤后池子超过候选上限时，关键词通道与本地向量通道各自对全池
+  排一次序，再用 RRF 倒数排名融合取前 N，而不是只保留最新的 N 篇。向量通道
+  不可用（本机缺 venv/模型）或池子本来就不超上限时，自动回到按时间直取。
+- **候选上限**：进入 LLM 排序的篇数（20-500）。
+- **回捞窗口 / 上限**：窗口内早前调研抓过、但既未推荐也未推送过的论文，给第二
+  次机会。窗口为 `0` 天即关闭。
+- **token 预算 / 摘要字符**：排序提示词按估算 token 预算自动装批，取代固定篇数
+  批次；摘要截断长度独立可调。
+
+每张调研卡片还会显示召回漏斗（`抓取 + 回捞 → 候选 → 推荐`）与成本行（关键词/
+语义两通道条数、LLM 批次数、估算 token 量）。
 
 ## 许可
 

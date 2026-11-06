@@ -97,6 +97,14 @@ export function apply(ctx) {
           typeof args.research_context === 'string' && args.research_context.trim()
             ? args.research_context
             : config.researchContext,
+        // Recall / ranking knobs come from the saved config only: they are
+        // tuning parameters, not per-request choices.
+        hybridRanking: config.hybridRanking !== false,
+        maxCandidates: config.maxCandidates,
+        rankTokenBudget: config.rankTokenBudget,
+        abstractChars: config.abstractChars,
+        carryoverDays: config.carryoverDays,
+        carryoverLimit: config.carryoverLimit,
       };
       const route = config.provider && config.model ? { provider: config.provider, model: config.model } : undefined;
 

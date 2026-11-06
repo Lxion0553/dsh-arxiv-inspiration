@@ -130,18 +130,55 @@ Notes:
 ## Install
 
 ```bash
+# 1. Fetch the package into the profile
 dsh plugin --profile web add github:Lxion0553/dsh-arxiv-inspiration
 ```
 
-Then restart the DSH host. The settings page gains an "arXiv Inspiration"
-section; sessions gain the `arxiv_inspiration` and `arxiv_knowledge_base`
-tools (open a new session after install).
+```jsonc
+// 2. Register the bundle in ~/.dsh/profiles/web/package.json
+//    (add to the existing dsh.profile.bundles array)
+"dsh": { "profile": { "bundles": [ /* … */, "dsh-arxiv-inspiration" ] } }
+```
+
+3. Restart the DSH host.
+
+Step 2 is required for CLI installs: `dsh plugin add` fetches the package, but
+only a bundle listed in `dsh.profile.bundles` has its `cordis.patch.yml`
+composed into the running configuration. Installing from the GUI plugin market
+does both steps for you.
+
+After the restart the settings page gains an "arXiv Inspiration" section, and
+sessions gain the `arxiv_inspiration` and `arxiv_knowledge_base` tools (open a
+new session after install — tools are bound per session at creation).
+
+The client half only needs the DSH Web shell: `react` and the
+`settings.section` slot. It has no third-party UI dependencies, so no
+additional entries are needed in `dsh.client.inject`.
 
 ## Configuration
 
 Via the settings page (persisted to `~/.dsh-arxiv-inspiration/config.json`):
 categories, weekdays, cross-list toggle, max papers per digest, LLM
 provider/model, push count & prompt, research context, alphaXiv toggles.
+
+Recall tuning (same page):
+
+- **Hybrid recall** — when the filtered pool exceeds the candidate cap, a
+  keyword lane and a local-embedding lane each rank the whole pool and are
+  fused with reciprocal-rank fusion, instead of keeping only the newest N.
+  Falls back to newest-first when the vector lane is unavailable (no local
+  venv/model) or when the pool already fits the cap.
+- **Candidate cap** — how many papers reach the LLM ranking (20-500).
+- **Carry-over window / limit** — papers fetched by an earlier survey inside
+  the window that were never recommended or pushed get a second chance.
+  `0` days disables it.
+- **Token budget / abstract chars** — ranking prompts are packed into batches
+  by estimated token budget instead of a fixed paper count, with a
+  configurable per-abstract truncation.
+
+Every survey card also reports the recall funnel (`fetched + carry-over →
+candidates → recommended`) and the cost line (keyword/semantic lane sizes,
+LLM batch count, estimated tokens).
 
 ## License
 

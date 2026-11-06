@@ -7,7 +7,7 @@
  */
 
 window.__ModuleLoader__.load({
-  id: '@local/dsh-arxiv-inspiration',
+  id: 'dsh-arxiv-inspiration',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -128,6 +128,58 @@ window.__ModuleLoader__.load({
             onChange: (e) => setConfig({ ...config, maxPush: Number(e.target.value) || 5 }),
             style: { maxWidth: 90 },
           })),
+        Field('混合召回',
+          h('div', { className: 'arxiv-row' },
+            h('button', {
+              className: 'arxiv-chip', 'data-on': String(config.hybridRanking !== false), type: 'button',
+              onClick: () => setConfig({ ...config, hybridRanking: config.hybridRanking === false }),
+              role: 'switch', 'aria-checked': String(config.hybridRanking !== false),
+              title: '池子超过候选上限时，关键词与本地向量两条通道各排一次，用 RRF 融合取前 N（比只保留最新论文更能捞到相关性高的旧稿）',
+            }, config.hybridRanking !== false ? '关键词 + 向量：开' : '关键词 + 向量：关'),
+            h('span', { className: 'arxiv-meta' }, '候选上限'),
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 20, max: 500,
+              value: config.maxCandidates ?? 200,
+              onChange: (e) => setConfig({ ...config, maxCandidates: Number(e.target.value) || 200 }),
+              style: { maxWidth: 90 },
+            }))),
+        Field('回捞 Carry-over',
+          h('div', { className: 'arxiv-row' },
+            h('span', { className: 'arxiv-meta' }, '窗口(天)'),
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 0, max: 30, value: config.carryoverDays ?? 10,
+              onChange: (e) => setConfig({ ...config, carryoverDays: Number(e.target.value) || 0 }),
+              style: { maxWidth: 80 },
+            }),
+            h('span', { className: 'arxiv-meta' }, '上限'),
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 0, max: 200,
+              value: config.carryoverLimit ?? 40,
+              onChange: (e) => setConfig({ ...config, carryoverLimit: Number(e.target.value) || 0 }),
+              style: { maxWidth: 80 },
+            }),
+            h('span', { className: 'arxiv-meta' },
+              '窗口=0 关闭；只回捞窗口内抓过、但从未推荐过也未推送过的论文'),
+            )),
+        Field('排序批处理',
+          h('div', { className: 'arxiv-row' },
+            h('span', { className: 'arxiv-meta' }, 'token 预算'),
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 4000, max: 60000,
+              value: config.rankTokenBudget ?? 18000,
+              onChange: (e) => setConfig({ ...config, rankTokenBudget: Number(e.target.value) || 18000 }),
+              style: { maxWidth: 100 },
+            }),
+            h('span', { className: 'arxiv-meta' }, '摘要字符'),
+            h('input', {
+              className: 'arxiv-input', type: 'number', min: 400, max: 4000,
+              value: config.abstractChars ?? 1600,
+              onChange: (e) => setConfig({ ...config, abstractChars: Number(e.target.value) || 1600 }),
+              style: { maxWidth: 100 },
+            }),
+            h('span', { className: 'arxiv-meta' },
+              '按 token 预算自动装批，取代固定篇数/固定截断'),
+            )),
         Field('LLM 模型',
           h('div', { className: 'arxiv-row' },
             h('select', {
@@ -243,7 +295,15 @@ window.__ModuleLoader__.load({
             h('span', { className: 'arxiv-meta' },
               `${utc8fmt(survey.created_at)} · ` +
               `${(survey.request?.weekdays ?? []).map((d) => WEEKDAY_CN[d] ?? d).join('/')} · ` +
-              (result ? `抓取 ${result.fetched_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇` : ''))),
+              (result
+                ? `抓取 ${result.fetched_count ?? '-'}` +
+                  (result.carryover_count ? ` + 回捞 ${result.carryover_count}` : '') +
+                  ` → 候选 ${result.candidate_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇`
+                : '')),
+            result?.recall ? h('span', { className: 'arxiv-meta' },
+              `召回：关键词 ${result.recall.keyword_lane} / 语义 ${result.recall.semantic_lane}` +
+              ` · LLM ${result.recall.rank_batches} 批 ≈ ${Math.round((result.recall.estimated_tokens ?? 0) / 100) / 10}k tokens` +
+              (result.recall.hybrid ? ' · RRF' : ' · 直取')) : null),
           h('div', { className: 'arxiv-row' },
             result?.recommended?.length
               ? h('button', { className: 'arxiv-fb', type: 'button', onClick: () => setOpen(!open) },
@@ -621,7 +681,9 @@ window.__ModuleLoader__.load({
         error ? h('div', { className: 'arxiv-error' }, error) : null);
     }
 
-    const MODULE_ID = '@local/dsh-arxiv-inspiration';
+    // Must equal the package name: the client-modules entry id is the manifest
+    // name, and __ModuleLoader__.load({id}) throws "could not load" on a mismatch.
+    const MODULE_ID = 'dsh-arxiv-inspiration';
     const STYLE_ID = `${MODULE_ID}/styles.css`;
 
     /** Install our stylesheet as an owned, tagged <style> (idempotent). */

@@ -86,6 +86,33 @@ def cmd_search(args):
     print(json.dumps({"ids": [pid for _, pid in ranked]}))
 
 
+def _cosine(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(x * x for x in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def cmd_score_texts(_args):
+    """Transient (non-indexed) similarity: score arbitrary texts against queries.
+
+    Reads {"queries": [...], "texts": [...]} from stdin (payloads past argv
+    limits) and prints {"scores": [...]} where each score is the maximum cosine
+    similarity of that text to any query. Used by the survey recall lane.
+    """
+    payload = json.load(sys.stdin)
+    texts = [str(t or "") for t in (payload.get("texts") or [])]
+    queries = [str(q or "").strip() for q in (payload.get("queries") or [])]
+    queries = [q for q in queries if q]
+    if not texts or not queries:
+        print(json.dumps({"scores": [0.0] * len(texts)}))
+        return
+    qvecs = embed(queries)
+    dvecs = embed(texts)
+    scores = [max(_cosine(q, d) for q in qvecs) for d in dvecs]
+    print(json.dumps({"scores": scores, "dim": len(dvecs[0])}))
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -96,6 +123,8 @@ def main():
     p_search.add_argument("--query", required=True)
     p_search.add_argument("--top-k", type=int, default=20)
     p_search.set_defaults(func=cmd_search)
+    p_score = sub.add_parser("score-texts")
+    p_score.set_defaults(func=cmd_score_texts)
     args = parser.parse_args()
     args.func(args)
 
