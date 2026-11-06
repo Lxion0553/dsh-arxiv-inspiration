@@ -13,6 +13,8 @@ window.__ModuleLoader__.load({
     const h = React.createElement;
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
+    /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
+    const BUILD = '0.5.2-ui3-inline-md';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -528,7 +530,9 @@ function mathToUnicode(text) {
           h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'library'), type: 'button', onClick: () => setTab('library') }, '论文库'),
           tab === 'library'
             ? h('span', { className: 'arxiv-meta' }, `共 ${library?.total ?? '…'} 篇（历次调研全量入库）`)
-            : null),
+            : null,
+          h('span', { className: 'arxiv-meta', style: { marginLeft: 'auto', opacity: 0.6 } },
+            `build ${BUILD}${MarkdownText ? '' : ' · 无 md 渲染器'}`)),
         tab === 'library'
           ? h(LibraryTab, { library, onLoadLibrary })
           : h('div', null,
@@ -837,17 +841,12 @@ function mathToUnicode(text) {
       }
     }
 
-    // Client context bridge: components call uiCtx.sidebarRight.openResource()
-    // to open md notes in the Web GUI sidebar document preview.
-    let uiCtx = null;
-    const fileAddress = (absolutePath) => `dsh-resource://file/absolute/${
-      String(absolutePath).replace(/\\/g, '/').split('/').filter(Boolean)
-        .map((seg) => encodeURIComponent(seg)).join('/')}`;
-
     return {
-      inject: ['slots', 'sidebarRight'],
+      // No sidebar dependency: `sidebarRight.openResource()` needs a mounted
+      // session surface, which a settings page does not have. The card renders
+      // the note in place with the platform MarkdownText instead.
+      inject: ['slots'],
       apply(ctx) {
-        uiCtx = ctx;
         ensureStyleTag();
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(
