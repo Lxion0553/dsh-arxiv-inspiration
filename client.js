@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui8-mainfix';
+    const BUILD = '0.5.2-ui9-wide-img';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -123,7 +123,7 @@ function mathToUnicode(text) {
     }
 
     const css = `
-.arxiv-page { display: flex; flex-direction: column; gap: 16px; max-width: 760px; }
+.arxiv-page { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .arxiv-card { background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l1); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .arxiv-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--dsw-alias-label-primary); }
 .arxiv-sub { color: var(--dsw-alias-label-secondary); font-size: 12px; }
