@@ -226,11 +226,12 @@ export function apply(ctx) {
         },
         sort: {
           type: 'string',
-          enum: ['recent', 'score', 'unjudged', 'deepread'],
+          enum: ['recent', 'score', 'unjudged', 'deepread', 'collection'],
           description:
             'For search_papers: result order — recent (last_seen desc, default), ' +
             'score (best survey score desc), unjudged (no feedback first, then score), ' +
-            'deepread (papers with a deep-read note first, then score).',
+            'deepread (papers with a deep-read note first, then score), ' +
+            'collection (papers in the push collection first, then recency).',
         },
         text: {
           type: 'string',

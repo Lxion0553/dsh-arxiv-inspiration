@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui5-recheck';
+    const BUILD = '0.5.2-ui6-hierarchy';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -735,10 +735,12 @@ function mathToUnicode(text) {
         }
       };
 
-      const search = async () => {
+      const search = async (sortOverride) => {
+        // onClick passes a synthetic event; only accept string overrides.
+        const s = typeof sortOverride === 'string' ? sortOverride : sort;
         setError('');
         try {
-          const params = new URLSearchParams({ query, feedback, sort, semantic: String(semantic), limit: '50' });
+          const params = new URLSearchParams({ query, feedback, sort: s, semantic: String(semantic), limit: '50' });
           onLoadLibrary(await api(`/papers?${params}`));
         } catch (e) {
           setError(e.message);
@@ -765,20 +767,21 @@ function mathToUnicode(text) {
             h('option', { value: 'not_interested' }, '👎 不感兴趣')),
           h('select', {
             className: 'arxiv-select', value: sort,
-            onChange: (e) => { setSort(e.target.value); setTimeout(search, 0); },
+            onChange: (e) => { const next = e.target.value; setSort(next); setTimeout(() => search(next), 0); },
             title: '排序方式',
           },
             h('option', { value: 'recent' }, '最新入库'),
             h('option', { value: 'score' }, '最高评分'),
             h('option', { value: 'unjudged' }, '待反馈优先'),
-            h('option', { value: 'deepread' }, '深读优先')),
+            h('option', { value: 'deepread' }, '深读优先'),
+            h('option', { value: 'collection' }, '清单优先')),
           h('button', {
             className: 'arxiv-chip', 'data-on': String(semantic), type: 'button',
             role: 'switch', 'aria-checked': String(semantic),
             onClick: () => setSemantic(!semantic),
             title: '语义检索（向量索引，不可用时自动回退关键词）',
           }, '语义检索'),
-          h('button', { className: 'arxiv-btn', type: 'button', onClick: search }, '搜索')),
+          h('button', { className: 'arxiv-btn', type: 'button', onClick: () => search() }, '搜索')),
         h('div', { className: 'arxiv-row', style: { marginTop: 6 } },
           h('input', {
             className: 'arxiv-input', value: addId,
@@ -890,6 +893,18 @@ function mathToUnicode(text) {
       const [confirmClear, setConfirmClear] = useState(false);
 
       const items = collection?.items ?? [];
+      const missingFulltext = items.filter((p) => !p.has_fulltext).length;
+      const fetchFulltext = async () => {
+        setError(''); setMsg('');
+        try {
+          const r = await api('/collection/fulltext', { method: 'POST' });
+          setMsg(r.queued > 0
+            ? `后台获取 ${r.queued} 篇全文中（逐篇下载 PDF），稍候刷新查看`
+            : '全部论文已有全文存档');
+        } catch (e) {
+          setError(e.message);
+        }
+      };
       const push = async () => {
         if (!sessionId || busy) return;
         setBusy(true); setError(''); setMsg('');
@@ -955,6 +970,10 @@ function mathToUnicode(text) {
             title: '推送成功后清空清单（不打移除标记：下次调研仍可重新收集）',
           }, clearAfter ? '推送后清空：开' : '推送后清空：关'),
           h('button', {
+            className: 'arxiv-fb', type: 'button', onClick: fetchFulltext, disabled: items.length === 0 || missingFulltext === 0,
+            title: '下载并存档缺全文论文的 PDF 文本（后台逐篇跑）；注入消息会引用全文路径',
+          }, missingFulltext > 0 ? `📥 补全文（${missingFulltext}）` : '全文齐'),
+          h('button', {
             className: 'arxiv-fb', type: 'button', onClick: clearAll, disabled: items.length === 0,
             title: '清空清单但不打移除标记（区别于单篇 ✕ 移除）',
           }, confirmClear ? '确认清空？' : '清空')),
@@ -983,6 +1002,7 @@ function mathToUnicode(text) {
                       `${(p.categories ?? []).join(', ')} · ${p.arxiv_id} · ${sourceLabel(p.source)} · 收集于 ${String(p.added_at ?? '').slice(0, 10)}` +
                       (p.feedback ? ` · ${p.feedback === 'interested' ? '👍' : p.feedback === 'read' ? '📖' : '👎'}` : '') +
                       (p.has_analysis ? ' · 📄已深读' : '') +
+                      (p.has_fulltext ? ' · 📑全文' : '') +
                       (p.in_library === false ? ' · ⚠️库外' : '')),
                     h('div', { className: 'arxiv-row' },
                       h('button', {
