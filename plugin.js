@@ -162,6 +162,9 @@ export function apply(ctx) {
             'add_paper',
             'add_note',
             'list_notes',
+            'collection_list',
+            'collection_add',
+            'collection_remove',
             'read_analysis',
             'write_analysis',
             'draft_profile_revision',
@@ -180,6 +183,11 @@ export function apply(ctx) {
             'for appending to an existing note, read_analysis first, then write the merged text). ' +
             'Deep-read notes live in ~/.dsh-arxiv-inspiration/analyses/<id>.md and are shown in the ' +
             'settings-page card via the "查看完整深读笔记" button. ' +
+            'collection_list: the user\'s push collection (papers accumulated across surveys plus ' +
+            'manual picks, to be pushed to a session in one shot). ' +
+            'collection_add: add one paper to that collection (use it when the user says to save a ' +
+            'paper for later batch push). ' +
+            'collection_remove: take one paper out of the collection. ' +
             'add_paper: manually add one paper to the library by arXiv id or abs URL (metadata fetched ' +
             'from arXiv; optional feedback). Use it when the user mentions a paper a survey missed.' +
             'add_note: attach a note to a paper (author=agent) — use this to record conclusions while ' +
@@ -237,6 +245,14 @@ export function apply(ctx) {
         weight: {
           type: 'number',
           description: 'For add_interest: 0-3 importance multiplier. Default 1.',
+        },
+        note: {
+          type: 'string',
+          description: 'For collection_add: why the paper is collected (shown in the push list).',
+        },
+        title: {
+          type: 'string',
+          description: 'For collection_add / add_paper: paper title snapshot when not in the library.',
         },
         id: {
           type: 'string',
@@ -413,6 +429,35 @@ export function apply(ctx) {
             count: notes.length,
             notes: notes.slice(0, Math.min(100, Number(args.limit) || 20)),
           };
+        }
+        case 'collection_list': {
+          const items = await kb.listCollection();
+          return {
+            count: items.length,
+            items: items.map((r) => ({
+              arxiv_id: r.arxiv_id,
+              title: r.title,
+              source: r.source,
+              note: r.note,
+              added_at: r.added_at,
+            })),
+            note: 'The user pushes this list to a session from the settings page (清单 tab).',
+          };
+        }
+        case 'collection_add': {
+          if (!String(args.arxiv_id ?? '').trim()) throw new Error('arxiv_id is required for collection_add');
+          const outcome = await kb.addToCollection({
+            arxiv_id: String(args.arxiv_id),
+            title: String(args.title ?? ''),
+            source: 'agent',
+            note: String(args.note ?? ''),
+          });
+          return { ok: true, added: outcome.added, item: outcome.item };
+        }
+        case 'collection_remove': {
+          if (!String(args.arxiv_id ?? '').trim()) throw new Error('arxiv_id is required for collection_remove');
+          const removed = await kb.removeFromCollection(String(args.arxiv_id));
+          return { ok: true, removed };
         }
         case 'draft_profile_revision': {
           const config = await readConfig();

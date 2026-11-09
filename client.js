@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui3-inline-md';
+    const BUILD = '0.5.2-ui4-collection';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -198,6 +198,13 @@ function mathToUnicode(text) {
             onClick: () => setConfig({ ...config, includeCrossList: !config.includeCrossList }),
             role: 'switch', 'aria-checked': String(config.includeCrossList === true),
           }, config.includeCrossList ? '包含 cross-list' : '仅主分类')),
+        Field('自动入清单',
+          h('button', {
+            className: 'arxiv-chip', 'data-on': String(config.autoCollect !== false), type: 'button',
+            onClick: () => setConfig({ ...config, autoCollect: config.autoCollect === false }),
+            role: 'switch', 'aria-checked': String(config.autoCollect !== false),
+            title: '每次调研完成后，把最终推荐列表自动收进「清单」标签（按 arXiv id 去重；手动移除过的不再自动收）',
+          }, config.autoCollect !== false ? '调研推荐自动收集：开' : '调研推荐自动收集：关')),
         Field('alphaXiv 增援',
           h('div', { className: 'arxiv-row' },
             h('button', {
@@ -336,7 +343,7 @@ function mathToUnicode(text) {
       friday: '周五', saturday: '周六', sunday: '周日',
     };
 
-    function SurveyCard({ survey, sessions, onPushed }) {
+    function SurveyCard({ survey, sessions, onPushed, collectionIds, onCollectionChange }) {
       const [open, setOpen] = useState(false);
       const [sessionId, setSessionId] = useState('');
       const [busy, setBusy] = useState(false);
@@ -430,6 +437,16 @@ function mathToUnicode(text) {
                 ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '', analysisPath: p.analysis_path })
                 : null,
               h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
+                h('button', {
+                  className: 'arxiv-fb', 'data-on': String(collectionIds?.has(p.arxiv_id) ?? false), type: 'button',
+                  onClick: async () => {
+                    try {
+                      await api('/collection', { method: 'POST', body: { arxiv_id: p.arxiv_id, title: p.title, note: p.reason ?? '' } });
+                      onCollectionChange?.();
+                    } catch (e) { setError(e.message); }
+                  },
+                  title: '加入推送清单：攒够一批后在「清单」标签一次性注入给某个会话',
+                }, collectionIds?.has(p.arxiv_id) ? '✓ 已在清单' : '＋ 清单'),
                 h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'interested'), type: 'button', onClick: () => sendFeedback(p, 'interested') }, '👍 感兴趣'),
                 h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'read'), type: 'button', onClick: () => sendFeedback(p, 'read') }, '📖 已读'),
                 h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'not_interested'), type: 'button', onClick: () => sendFeedback(p, 'not_interested') }, '👎 不感兴趣'),
@@ -466,7 +483,9 @@ function mathToUnicode(text) {
       const [startError, setStartError] = useState('');
       const [tab, setTab] = useState('survey');
       const [library, setLibrary] = useState(null);
+      const [collection, setCollection] = useState(null);
       const onLoadLibrary = setLibrary;
+      const collIds = new Set((collection?.items ?? []).map((i) => i.arxiv_id));
       const timerRef = useRef(null);
 
       const refresh = useCallback(async () => {
@@ -482,8 +501,18 @@ function mathToUnicode(text) {
           setSurveys(list);
           setSessions(sess.sessions ?? []);
           setModelCatalog(models);
+          const coll = await api('/collection').catch(() => null);
+          if (coll) setCollection(coll);
         } catch {
           /* host API not reachable yet */
+        }
+      }, []);
+
+      const refreshCollection = useCallback(async () => {
+        try {
+          setCollection(await api('/collection'));
+        } catch {
+          /* keep the previous snapshot */
         }
       }, []);
 
@@ -528,14 +557,18 @@ function mathToUnicode(text) {
         h('div', { className: 'arxiv-row', style: { gap: 6 } },
           h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'survey'), type: 'button', onClick: () => setTab('survey') }, '调研'),
           h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'library'), type: 'button', onClick: () => setTab('library') }, '论文库'),
+          h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'collection'), type: 'button', onClick: () => setTab('collection') },
+            `清单${collection ? ` (${collection.total})` : ''}`),
           tab === 'library'
             ? h('span', { className: 'arxiv-meta' }, `共 ${library?.total ?? '…'} 篇（历次调研全量入库）`)
             : null,
           h('span', { className: 'arxiv-meta', style: { marginLeft: 'auto', opacity: 0.6 } },
             `build ${BUILD}${MarkdownText ? '' : ' · 无 md 渲染器'}`)),
         tab === 'library'
-          ? h(LibraryTab, { library, onLoadLibrary })
-          : h('div', null,
+          ? h(LibraryTab, { library, onLoadLibrary, collectionIds: collIds, onCollectionChange: refreshCollection })
+          : tab === 'collection'
+            ? h(CollectionTab, { collection, sessions, refreshCollection })
+            : h('div', null,
               h(ProfileCard),
               h(ConfigForm, {
                 config, setConfig, dirty, onSave: save, saving, error: configError,
@@ -552,7 +585,7 @@ function mathToUnicode(text) {
                 startError ? h('div', { className: 'arxiv-error' }, startError) : null,
                 surveys.length === 0
                   ? h('span', { className: 'arxiv-sub' }, '还没有调研记录。点击「启动调研」开始。')
-                  : surveys.map((s) => h(SurveyCard, { key: s.id, survey: s, sessions, onPushed: refresh })),
+                  : surveys.map((s) => h(SurveyCard, { key: s.id, survey: s, sessions, onPushed: refresh, collectionIds: collIds, onCollectionChange: refreshCollection })),
               )),
         h('div', { className: 'arxiv-sub' },
           '知识库位于 ~/.dsh-arxiv-inspiration/（papers.jsonl 论文库、profile.md 画像、interests.jsonl 兴趣、feedback.jsonl 反馈）。反馈会影响后续筛选，全文档案在 fulltext/。'),
@@ -560,7 +593,7 @@ function mathToUnicode(text) {
     }
 
     /** Paper-library browser tab: search + filters over papers.jsonl. */
-    function LibraryTab({ library, onLoadLibrary }) {
+    function LibraryTab({ library, onLoadLibrary, collectionIds, onCollectionChange }) {
       const [query, setQuery] = useState('');
       const [semantic, setSemantic] = useState(false);
       const [feedback, setFeedback] = useState('');
@@ -653,8 +686,19 @@ function mathToUnicode(text) {
                     (p.scores?.length ? ` · 最高分 ${Math.max(...p.scores.map((s) => s.total ?? 0))}/40` : '') +
                     (p.feedback ? ` · ${p.feedback === 'interested' ? '👍' : p.feedback === 'read' ? '📖' : '👎'}` : '') +
                     (p.pdf_analysis || p.has_analysis ? ' · 📄已深读' : '')),
-                  h('button', { className: 'arxiv-fb', type: 'button', onClick: () => setExpanded(expanded === p.arxiv_id ? null : p.arxiv_id) },
-                    expanded === p.arxiv_id ? '收起' : '摘要')),
+                  h('div', { className: 'arxiv-row' },
+                    h('button', {
+                      className: 'arxiv-fb', 'data-on': String(collectionIds?.has(p.arxiv_id) ?? false), type: 'button',
+                      onClick: async () => {
+                        try {
+                          await api('/collection', { method: 'POST', body: { arxiv_id: p.arxiv_id, title: p.title } });
+                          onCollectionChange?.();
+                        } catch (e) { setError(e.message); }
+                      },
+                      title: '加入推送清单：攒够一批后在「清单」标签一次性注入给某个会话',
+                    }, collectionIds?.has(p.arxiv_id) ? '✓ 已在清单' : '＋ 清单'),
+                    h('button', { className: 'arxiv-fb', type: 'button', onClick: () => setExpanded(expanded === p.arxiv_id ? null : p.arxiv_id) },
+                      expanded === p.arxiv_id ? '收起' : '摘要'))),
                 expanded === p.arxiv_id ? h('div', null,
                   h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
                   p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh)) : null,
@@ -713,6 +757,130 @@ function mathToUnicode(text) {
                   ? h(MarkdownText, { text: md ?? '' })
                   : h('pre', { className: 'arxiv-note-pre' }, mathToUnicode(md ?? ''))
           ) : null));
+    }
+
+    /**
+     * Push-collection tab: papers accumulated across surveys plus manual
+     * picks, injected to one session in a single shot (清单 tab).
+     */
+    function CollectionTab({ collection, sessions, refreshCollection }) {
+      const [sessionId, setSessionId] = useState('');
+      const [note, setNote] = useState('');
+      const [clearAfter, setClearAfter] = useState(false);
+      const [busy, setBusy] = useState(false);
+      const [msg, setMsg] = useState('');
+      const [error, setError] = useState('');
+      const [expanded, setExpanded] = useState(null);
+      const [confirmClear, setConfirmClear] = useState(false);
+
+      const items = collection?.items ?? [];
+      const push = async () => {
+        if (!sessionId || busy) return;
+        setBusy(true); setError(''); setMsg('');
+        try {
+          const r = await api('/collection/push', {
+            method: 'POST',
+            body: { sessionId, note, clear: clearAfter },
+          });
+          setMsg(`已注入 ${r.pushed} 篇（约 ${r.chars} 字符）${r.cleared ? '，清单已清空' : ''}`);
+          refreshCollection();
+        } catch (e) {
+          setError(e.message);
+        } finally {
+          setBusy(false);
+        }
+      };
+      const remove = async (id) => {
+        try {
+          await api(`/collection/${encodeURIComponent(id)}`, { method: 'DELETE' });
+          refreshCollection();
+        } catch (e) {
+          setError(e.message);
+        }
+      };
+      const clearAll = async () => {
+        if (!confirmClear) {
+          setConfirmClear(true);
+          setTimeout(() => setConfirmClear(false), 3000);
+          return;
+        }
+        try {
+          const r = await api('/collection', { method: 'DELETE' });
+          setMsg(`已清空 ${r.cleared} 篇`);
+          refreshCollection();
+        } catch (e) {
+          setError(e.message);
+        } finally {
+          setConfirmClear(false);
+        }
+      };
+      const sourceLabel = (src) => (String(src).startsWith('survey')
+        ? `调研 ${String(src.split(':')[1] ?? '').slice(0, 8)}`
+        : src === 'agent' ? 'agent' : '手动');
+
+      return h('div', { className: 'arxiv-card' },
+        h('h3', { className: 'arxiv-title', style: { margin: 0 } }, '推送清单 / Push Collection'),
+        h('div', { className: 'arxiv-meta' },
+          `共 ${collection?.total ?? items.length} 篇（调研自动 ${collection?.auto_collected ?? 0} · 手动/agent ${collection?.manual ?? 0}）。` +
+          '每次调研的推荐论文自动入列（可在调研配置关闭），也可在调研卡片或论文库手动加入；攒够一批后一次性注入给某个会话。'),
+        h('div', { className: 'arxiv-row', style: { marginTop: 8 } },
+          h('select', { className: 'arxiv-select', value: sessionId, onChange: (e) => setSessionId(e.target.value) },
+            h('option', { value: '' }, '选择目标对话…'),
+            sessions.map((s) =>
+              h('option', { key: s.id, value: s.id }, `${String(s.title).slice(0, 40)} (${s.id.slice(0, 8)})`))),
+          h('button', {
+            className: 'arxiv-btn arxiv-btn-ghost', disabled: !sessionId || busy || items.length === 0, type: 'button',
+            onClick: push,
+            title: '把整份清单注入给该会话的 agent（英文论文列表 + 收集理由 + 摘要）',
+          }, busy ? '注入中…' : `🤖 推送清单（${items.length} 篇）`),
+          h('button', {
+            className: 'arxiv-fb', 'data-on': String(clearAfter), type: 'button',
+            onClick: () => setClearAfter(!clearAfter), role: 'switch', 'aria-checked': String(clearAfter),
+            title: '推送成功后清空清单（不打移除标记：下次调研仍可重新收集）',
+          }, clearAfter ? '推送后清空：开' : '推送后清空：关'),
+          h('button', {
+            className: 'arxiv-fb', type: 'button', onClick: clearAll, disabled: items.length === 0,
+            title: '清空清单但不打移除标记（区别于单篇 ✕ 移除）',
+          }, confirmClear ? '确认清空？' : '清空')),
+        h('input', {
+          className: 'arxiv-input', type: 'text', value: note,
+          onChange: (e) => setNote(e.target.value),
+          placeholder: '可选附言：注入时附带的说明（如“请精读前 5 篇的方法部分”）',
+          style: { marginTop: 8 },
+        }),
+        items.length > 40
+          ? h('div', { className: 'arxiv-meta', style: { marginTop: 6 } },
+              `清单较长（${items.length} 篇）：注入消息约 ${Math.round(items.length * 1.2)}k 字符，确认目标会话需要完整列表再推送。`)
+          : null,
+        msg ? h('div', { className: 'arxiv-meta' }, msg) : null,
+        error ? h('div', { className: 'arxiv-error' }, error) : null,
+        h('div', { style: { marginTop: 10 } },
+          items.length === 0
+            ? h('span', { className: 'arxiv-sub' }, '清单为空。调研完成后推荐论文会自动入列；也可在调研卡片或论文库点「＋ 清单」。')
+            : items.map((p, i) =>
+                h('div', { key: p.arxiv_id, className: 'arxiv-paper' },
+                  h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title' },
+                    `${i + 1}. ${p.title}`),
+                  p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
+                  h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
+                    h('span', { className: 'arxiv-meta' },
+                      `${(p.categories ?? []).join(', ')} · ${p.arxiv_id} · ${sourceLabel(p.source)} · 收集于 ${String(p.added_at ?? '').slice(0, 10)}` +
+                      (p.feedback ? ` · ${p.feedback === 'interested' ? '👍' : p.feedback === 'read' ? '📖' : '👎'}` : '') +
+                      (p.has_analysis ? ' · 📄已深读' : '') +
+                      (p.in_library === false ? ' · ⚠️库外' : '')),
+                    h('div', { className: 'arxiv-row' },
+                      h('button', {
+                        className: 'arxiv-fb', type: 'button',
+                        onClick: () => setExpanded(expanded === p.arxiv_id ? null : p.arxiv_id),
+                      }, expanded === p.arxiv_id ? '收起' : '摘要'),
+                      h('button', {
+                        className: 'arxiv-fb', type: 'button', onClick: () => remove(p.arxiv_id),
+                        title: '移除并不再自动收集（手动重新加入可恢复）',
+                      }, '✕'))),
+                  p.note ? h('div', { className: 'arxiv-meta' }, `收集理由：${mathToUnicode(p.note)}`) : null,
+                  expanded === p.arxiv_id && p.abstract
+                    ? h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract))
+                    : null))));
     }
 
     /** Notes timeline + add-note input for one paper (P3-9). */
