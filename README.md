@@ -127,6 +127,50 @@ Notes:
 - Token cached for the host's lifetime; edit the file and restart the DSH
   host to pick up a new one.
 
+## agentero paper-reader integration (optional)
+
+If you also run the [agentero-dsh](https://github.com/poco-ai/agentero-dsh)
+plugin (paper-reader skill), this plugin can surface its per-paper deep-dive
+notes (`NOTES.md`) alongside its own digests — **referenced, never merged**:
+your survey-generated notes stay untouched, and the external note is rendered
+straight from its file.
+
+Configure one field in the settings page (persisted as `agenteroPapersDir` in
+`~/.dsh-arxiv-inspiration/config.json`):
+
+```
+/Users/<you>/<vault>/papers/papers        ← the inner papers/ directory
+```
+
+The expected vault layout is what agentero's paper-reader skill creates:
+
+```
+<papersDir>/
+├── 2105.01672/
+│   ├── NOTES.md          ← Obsidian-style deep-dive (frontmatter, wiki links)
+│   ├── 2105.01672.pdf
+│   └── source/           ← figures and LaTeX sources referenced by NOTES.md
+└── 2610.37596/…
+```
+
+With the field set:
+
+- The 深读笔记 tab shows a second 📖 source chip per paper that has an external
+  note; figures load through a same-origin asset endpoint that is
+  **realpath-contained** inside `papersDir` (paths escaping it are rejected).
+  Wiki links `[[…]]` are unwrapped to plain text, frontmatter is stripped, and
+  relative image/link targets are rewritten to the asset endpoint. Notes are
+  read-only — this plugin never writes into the vault.
+- Injected agent briefs (survey digest & push collection) gain one line per
+  paper: `paper-reader deep-dive (external, full figures): <absolute path>`,
+  placed between the deep-read note and the full text in the reading
+  hierarchy (abstract → deep-read note → paper-reader note → full text).
+- The `arxiv_knowledge_base` tool's `get_paper` action returns
+  `agentero_note_path` when a note exists, so an agent can read the file
+  directly.
+
+Leave the field empty (default) to disable the integration entirely.
+
 ## Install
 
 ```bash

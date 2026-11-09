@@ -108,6 +108,45 @@ bundle](https://alphaxiv.org) 里的 token，凭据只存一处：
   PyMuPDF 提取。
 - token 在宿主运行期内缓存；修改文件后需重启 DSH 宿主生效。
 
+## agentero paper-reader 集成（可选）
+
+如果你同时在使用 [agentero-dsh](https://github.com/poco-ai/agentero-dsh)
+插件（paper-reader skill），本插件可以把它的单篇精读笔记（`NOTES.md`）与自己的
+深读笔记并列展示——**只引用，绝不合并**：调研生成的笔记不会被改写，外部笔记
+直接从原文件渲染。
+
+设置页只需配置一个字段（持久化为 `~/.dsh-arxiv-inspiration/config.json` 的
+`agenteroPapersDir`）：
+
+```
+/Users/<你>/<vault>/papers/papers        ← 内层的 papers/ 目录
+```
+
+期望的目录结构即 agentero paper-reader skill 生成的结构：
+
+```
+<papersDir>/
+├── 2105.01672/
+│   ├── NOTES.md          ← Obsidian 风格精读笔记（frontmatter、wiki 链接）
+│   ├── 2105.01672.pdf
+│   └── source/           ← NOTES.md 引用的图片与 LaTeX 源
+└── 2610.37596/…
+```
+
+配置后：
+
+- 「深读笔记」页里每篇有外部笔记的论文会多出 📖 来源切换；图片经同源 asset
+  端点加载，该端点做 **realpath 越界防护**（逃出 `papersDir` 的路径一律
+  拒绝）。`[[wiki]]` 链接还原为纯文本，frontmatter 剥离，图片/相对链接重写到
+  asset 端点。外部笔记只读——本插件从不写入 vault。
+- 注入给 agent 的消息（调研摘要与推送清单）每篇多一行
+  `paper-reader deep-dive (external, full figures): <绝对路径>`，按阅读层级
+  排在深读笔记之后、全文之前（摘要 → 深读笔记 → paper-reader 讲解 → 全文）。
+- `arxiv_knowledge_base` 工具的 `get_paper` 在外部笔记存在时返回
+  `agentero_note_path`，agent 可按路径直接读文件。
+
+留空（默认）即完全关闭该集成。
+
 ## 安装
 
 ```bash
