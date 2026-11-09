@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui4-collection';
+    const BUILD = '0.5.2-ui5-recheck';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -343,6 +343,76 @@ function mathToUnicode(text) {
       friday: '周五', saturday: '周六', sunday: '周日',
     };
 
+    /** Library recheck launcher (库内重评): re-evaluate papers.jsonl against
+     * the CURRENT profile. Funnel: coarse 0-10 over every candidate → fine
+     * ranking of survivors → top picks (full treatment) + worth-a-look tier. */
+    function RecheckPanel({ running, onLaunched }) {
+      const [open, setOpen] = useState(false);
+      const [fullRescan, setFullRescan] = useState(false);
+      const [inclRec, setInclRec] = useState(false);
+      const [inclPushed, setInclPushed] = useState(false);
+      const [since, setSince] = useState('');
+      const [until, setUntil] = useState('');
+      const [busy, setBusy] = useState(false);
+      const [error, setError] = useState('');
+
+      const chip = (on, set, label, title) => h('button', {
+        className: 'arxiv-chip', 'data-on': String(on), type: 'button', title,
+        onClick: () => set(!on),
+      }, `${on ? '✓ ' : ''}${label}`);
+
+      const launch = async () => {
+        setBusy(true); setError('');
+        try {
+          await api('/surveys', {
+            method: 'POST',
+            body: {
+              mode: 'recheck',
+              fullRescan,
+              includeRecommended: inclRec,
+              includePushed: inclPushed,
+              since: since || undefined,
+              until: until || undefined,
+            },
+          });
+          setOpen(false);
+          onLaunched?.();
+        } catch (e) {
+          setError(e.message);
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      return h('div', { className: 'arxiv-card' },
+        h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
+          h('div', null,
+            h('h3', { className: 'arxiv-title', style: { margin: 0 } }, '♻️ 库内重评 / Library Recheck'),
+            h('span', { className: 'arxiv-sub' },
+              '画像或研究背景变化后，按当前画像重评论文库存量论文（调研只能看过去 7 天，重评不受此限）。')),
+          h('button', { className: 'arxiv-btn arxiv-btn-ghost', type: 'button', onClick: () => setOpen(!open) },
+            open ? '收起' : '重评论文库')),
+        open
+          ? h('div', { style: { marginTop: 8 } },
+              h('div', { className: 'arxiv-row', style: { flexWrap: 'wrap' } },
+                chip(fullRescan, setFullRescan, '全量重扫', '忽略水位线，重评所有论文（默认只评从未重评过的）'),
+                chip(inclRec, setInclRec, '含已推荐', '包含过去调研已推荐过的论文（默认排除）'),
+                chip(inclPushed, setInclPushed, '含已推送', '包含已推送给会话的论文（默认排除）'),
+                h('span', { className: 'arxiv-meta', style: { alignSelf: 'center' } }, '首次入库日期（可选）'),
+                h('input', { type: 'date', value: since, onChange: (e) => setSince(e.target.value), className: 'arxiv-input', style: { width: 140 } }),
+                h('span', { className: 'arxiv-meta' }, '→'),
+                h('input', { type: 'date', value: until, onChange: (e) => setUntil(e.target.value), className: 'arxiv-input', style: { width: 140 } })),
+              h('div', { className: 'arxiv-meta', style: { marginTop: 4 } },
+                '漏斗：粗筛（每篇 0-10 分写回论文库）→ 精排 top 80 → 推荐 ~5 篇（全待遇）+ 值得一看 ≤30 篇。排除：不感兴趣反馈永远跳过。'),
+              h('div', { className: 'arxiv-row', style: { marginTop: 6 } },
+                h('button', { className: 'arxiv-btn', disabled: busy || running, type: 'button', onClick: launch },
+                  busy ? '启动中…' : running ? '有任务进行中…' : '♻️ 启动重评')),
+              error ? h('div', { className: 'arxiv-error' }, error) : null)
+          : null);
+    }
+
+    const RECHECK_STAGE_CN = { coarse: '粗筛', fine: '精排', translate: '翻译', done: '完成' };
+
     function SurveyCard({ survey, sessions, onPushed, collectionIds, onCollectionChange }) {
       const [open, setOpen] = useState(false);
       const [sessionId, setSessionId] = useState('');
@@ -350,7 +420,9 @@ function mathToUnicode(text) {
       const [error, setError] = useState('');
       const [feedback, setFeedback] = useState(survey.feedback ?? {});
       const [savedNote, setSavedNote] = useState({});
+      const [worthOpen, setWorthOpen] = useState(false);
       const result = survey.result;
+      const isRecheck = survey.request?.type === 'recheck' || result?.type === 'recheck';
 
       const sendFeedback = async (paper, value) => {
         const { arxiv_id: arxivId, title } = paper;
@@ -394,27 +466,39 @@ function mathToUnicode(text) {
         h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
           h('div', { className: 'arxiv-row' },
             h('span', { className: 'arxiv-badge', 'data-s': survey.status }, survey.status),
+            isRecheck ? h('span', { className: 'arxiv-chip', 'data-on': 'true', type: 'button', style: { cursor: 'default' } }, '♻️ 库内重评') : null,
             h('span', { className: 'arxiv-meta' },
-              `${utc8fmt(survey.created_at)} · ` +
-              `${(survey.request?.weekdays ?? []).map((d) => WEEKDAY_CN[d] ?? d).join('/')} · ` +
-              (result
-                ? `抓取 ${result.fetched_count ?? '-'}` +
-                  (result.carryover_count ? ` + 回捞 ${result.carryover_count}` : '') +
-                  ` → 候选 ${result.candidate_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇` +
-                  (result.push_limits
-                    ? `（预算 ${result.push_limits.maxPush}/${result.push_limits.pushCount}）`
-                    : '')
-                : '')),
-            result?.recall ? h('span', { className: 'arxiv-meta' },
+              isRecheck
+                ? `${utc8fmt(survey.created_at)} · ` +
+                  (result
+                    ? `候选 ${result.candidate_count ?? '-'} → 粗筛存活 ${result.fine_pool ?? '-'} → 推荐 ${result.recommended?.length ?? 0} + 值得一看 ${result.worth_a_look?.length ?? 0} 篇`
+                    : '按当前画像重评论文库')
+                : `${utc8fmt(survey.created_at)} · ` +
+                  `${(survey.request?.weekdays ?? []).map((d) => WEEKDAY_CN[d] ?? d).join('/')} · ` +
+                  (result
+                    ? `抓取 ${result.fetched_count ?? '-'}` +
+                      (result.carryover_count ? ` + 回捞 ${result.carryover_count}` : '') +
+                      ` → 候选 ${result.candidate_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇` +
+                      (result.push_limits
+                        ? `（预算 ${result.push_limits.maxPush}/${result.push_limits.pushCount}）`
+                        : '')
+                    : '')),
+            !isRecheck && result?.recall ? h('span', { className: 'arxiv-meta' },
               `召回：关键词 ${result.recall.keyword_lane} / 语义 ${result.recall.semantic_lane}` +
               ` · LLM ${result.recall.rank_batches} 批 ≈ ${Math.round((result.recall.estimated_tokens ?? 0) / 100) / 10}k tokens` +
-              (result.recall.hybrid ? ' · RRF' : ' · 直取')) : null),
+              (result.recall.hybrid ? ' · RRF' : ' · 直取')) : null,
+            isRecheck && result?.coarse_batches ? h('span', { className: 'arxiv-meta' }, `粗筛 ${result.coarse_batches} 批`) : null),
           h('div', { className: 'arxiv-row' },
             result?.recommended?.length
               ? h('button', { className: 'arxiv-fb', type: 'button', onClick: () => setOpen(!open) },
                   open ? '收起' : '查看结果')
               : null)),
-        survey.status === 'running' ? h('span', { className: 'arxiv-meta' }, '调研进行中，请稍候刷新…') : null,
+        survey.status === 'running'
+          ? h('span', { className: 'arxiv-meta' },
+              survey.progress
+                ? `重评进行中：${RECHECK_STAGE_CN[survey.progress.stage] ?? survey.progress.stage} ${survey.progress.done}/${survey.progress.total}${survey.progress.stage === 'coarse' ? ' 批' : ''}，请稍候刷新…`
+                : '调研进行中，请稍候刷新…')
+          : null,
         survey.status_detail ? h('div', { className: 'arxiv-error' }, survey.status_detail) : null,
         open && result ? h('div', null,
           // One block per recommended paper: bilingual title + abstract,
@@ -453,6 +537,37 @@ function mathToUnicode(text) {
                 savedNote[p.arxiv_id]
                   ? h('span', { className: 'arxiv-meta' }, savedNote[p.arxiv_id] === 'saving' ? '记录中…' : savedNote[p.arxiv_id])
                   : null))),
+          // Worth-a-look tier (库内重评): fine-ranked papers right below the
+          // picks — English title + one-line reason + quick add to collection.
+          result.worth_a_look?.length
+            ? h('div', { style: { marginTop: 10 } },
+                h('button', {
+                  className: 'arxiv-chip', 'data-on': String(worthOpen), type: 'button',
+                  onClick: () => setWorthOpen(!worthOpen),
+                  title: '精排通过但未进推荐的论文：一句话理由，可一键加入清单',
+                }, `${worthOpen ? '收起' : '展开'} 值得一看 (${result.worth_a_look.length})`),
+                worthOpen
+                  ? result.worth_a_look.map((p, i) =>
+                      h('div', { key: p.arxiv_id, className: 'arxiv-row', style: { marginTop: 6, alignItems: 'flex-start' } },
+                        h('span', { className: 'arxiv-meta', style: { minWidth: 26 } }, `${i + 1}.`),
+                        h('div', { style: { flex: 1 } },
+                          h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title', style: { fontSize: 13 } },
+                            p.title),
+                          h('div', { className: 'arxiv-meta' },
+                            `${p.coarse_score ?? '-'}/10 · ${p.arxiv_id}`),
+                          p.reason ? h('div', { className: 'arxiv-abs', style: { marginTop: 2 } }, mathToUnicode(p.reason)) : null),
+                        h('button', {
+                          className: 'arxiv-fb', 'data-on': String(collectionIds?.has(p.arxiv_id) ?? false), type: 'button',
+                          onClick: async () => {
+                            try {
+                              await api('/collection', { method: 'POST', body: { arxiv_id: p.arxiv_id, title: p.title, note: p.reason ?? '' } });
+                              onCollectionChange?.();
+                            } catch (e) { setError(e.message); }
+                          },
+                          title: '加入推送清单（不自动收集，手动加）',
+                        }, collectionIds?.has(p.arxiv_id) ? '✓ 已在清单' : '＋ 清单')))
+                  : null)
+            : null,
           h('div', { className: 'arxiv-row', style: { marginTop: 8 } },
             h('select', {
               className: 'arxiv-select', value: sessionId,
@@ -586,7 +701,8 @@ function mathToUnicode(text) {
                 surveys.length === 0
                   ? h('span', { className: 'arxiv-sub' }, '还没有调研记录。点击「启动调研」开始。')
                   : surveys.map((s) => h(SurveyCard, { key: s.id, survey: s, sessions, onPushed: refresh, collectionIds: collIds, onCollectionChange: refreshCollection })),
-              )),
+              ),
+              h(RecheckPanel, { running, onLaunched: refresh })),
         h('div', { className: 'arxiv-sub' },
           '知识库位于 ~/.dsh-arxiv-inspiration/（papers.jsonl 论文库、profile.md 画像、interests.jsonl 兴趣、feedback.jsonl 反馈）。反馈会影响后续筛选，全文档案在 fulltext/。'),
       );

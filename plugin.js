@@ -11,7 +11,7 @@
  * - Plugin config lives in ~/.dsh-arxiv-inspiration/config.json.
  */
 
-import { registerRoutes } from './lib/server.js';
+import { registerRoutes, startRecheck } from './lib/server.js';
 import { fetchById } from './lib/arxiv.js';
 import { draftProfileRevision } from './lib/profile.js';
 import { runSurvey } from './lib/survey.js';
@@ -165,6 +165,7 @@ export function apply(ctx) {
             'collection_list',
             'collection_add',
             'collection_remove',
+            'recheck_library',
             'read_analysis',
             'write_analysis',
             'draft_profile_revision',
@@ -188,6 +189,10 @@ export function apply(ctx) {
             'collection_add: add one paper to that collection (use it when the user says to save a ' +
             'paper for later batch push). ' +
             'collection_remove: take one paper out of the collection. ' +
+            'recheck_library: START (in the background) a library re-evaluation of papers.jsonl ' +
+            'against the CURRENT profile — use it after the profile/research context changes, when ' +
+            're-running surveys is too slow or the papers are older than the 7-day survey window. ' +
+            'Returns the record id; progress and results appear in the settings page (调研 tab). ' +
             'add_paper: manually add one paper to the library by arXiv id or abs URL (metadata fetched ' +
             'from arXiv; optional feedback). Use it when the user mentions a paper a survey missed.' +
             'add_note: attach a note to a paper (author=agent) — use this to record conclusions while ' +
@@ -206,7 +211,9 @@ export function apply(ctx) {
         },
         since: {
           type: 'string',
-          description: 'For search_papers: only papers first/last seen on or after this date (YYYY-MM-DD).',
+          description:
+            'For search_papers: only papers first/last seen on or after this date (YYYY-MM-DD). ' +
+            'For recheck_library: bound candidates by first_seen (YYYY-MM-DD, optional).',
         },
         feedback: {
           type: 'string',
@@ -249,6 +256,22 @@ export function apply(ctx) {
         note: {
           type: 'string',
           description: 'For collection_add: why the paper is collected (shown in the push list).',
+        },
+        full_rescan: {
+          type: 'boolean',
+          description:
+            'For recheck_library: ignore the recheck watermark and re-evaluate every paper ' +
+            '(default false: only papers never rechecked before).',
+        },
+        include_recommended: {
+          type: 'boolean',
+          description:
+            'For recheck_library: include papers already recommended by a past survey (default false).',
+        },
+        include_pushed: {
+          type: 'boolean',
+          description:
+            'For recheck_library: include papers already pushed to a session (default false).',
         },
         title: {
           type: 'string',
@@ -458,6 +481,19 @@ export function apply(ctx) {
           if (!String(args.arxiv_id ?? '').trim()) throw new Error('arxiv_id is required for collection_remove');
           const removed = await kb.removeFromCollection(String(args.arxiv_id));
           return { ok: true, removed };
+        }
+        case 'recheck_library': {
+          const record = await startRecheck(ctx, args);
+          return {
+            ok: true,
+            id: record.id,
+            status: record.status,
+            note:
+              'Recheck launched in the background (coarse triage → fine ranking → top picks). ' +
+              'The user watches progress in the arXiv Inspiration settings page (调研 tab, ♻️ card); ' +
+              'recommended papers are auto-collected into the push collection when enabled. ' +
+              'This call returns immediately — poll nothing here.',
+          };
         }
         case 'draft_profile_revision': {
           const config = await readConfig();
