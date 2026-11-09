@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui9-wide-img';
+    const BUILD = '0.5.2-ui10-pagination';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -720,7 +720,7 @@ function mathToUnicode(text) {
         tab === 'notes'
           ? h(NotesTab, { view: notesView, setView: setNotesView })
           : tab === 'library'
-          ? h(LibraryTab, { library, onLoadLibrary, collectionIds: collIds, onCollectionChange: refreshCollection, onOpenNotes: openNotes })
+          ? h(LibraryTab, { onLoadLibrary, collectionIds: collIds, onCollectionChange: refreshCollection, onOpenNotes: openNotes })
           : tab === 'collection'
             ? h(CollectionTab, { collection, sessions, refreshCollection })
             : h('div', null,
@@ -748,8 +748,10 @@ function mathToUnicode(text) {
       );
     }
 
-    /** Paper-library browser tab: search + filters over papers.jsonl. */
-    function LibraryTab({ library, onLoadLibrary, collectionIds, onCollectionChange, onOpenNotes }) {
+    /** Paper-library browser tab: search + filters over papers.jsonl.
+     * Results are paginated (PAGE per request):「加载更多」 appends the next
+     * page; a full page means more may follow, a short page means the end. */
+    function LibraryTab({ onLoadLibrary, collectionIds, onCollectionChange, onOpenNotes }) {
       const [query, setQuery] = useState('');
       const [semantic, setSemantic] = useState(false);
       const [feedback, setFeedback] = useState('');
@@ -758,6 +760,11 @@ function mathToUnicode(text) {
       const [error, setError] = useState('');
       const [addId, setAddId] = useState('');
       const [addNoteMsg, setAddNoteMsg] = useState('');
+      const [items, setItems] = useState([]); // accumulated papers across pages
+      const [hasMore, setHasMore] = useState(false);
+      const [total, setTotal] = useState(null);
+      const [loadingMore, setLoadingMore] = useState(false);
+      const PAGE = 50;
 
       const addPaper = async () => {
         if (!addId.trim()) return;
@@ -775,20 +782,49 @@ function mathToUnicode(text) {
         }
       };
 
+      const fetchPage = async (offset, sortOverride) => {
+        const params = new URLSearchParams({
+          query, feedback, sort: sortOverride, semantic: String(semantic),
+          limit: String(PAGE), offset: String(offset),
+        });
+        return api(`/papers?${params}`);
+      };
+
       const search = async (sortOverride) => {
         // onClick passes a synthetic event; only accept string overrides.
         const s = typeof sortOverride === 'string' ? sortOverride : sort;
         setError('');
         try {
-          const params = new URLSearchParams({ query, feedback, sort: s, semantic: String(semantic), limit: '50' });
-          onLoadLibrary(await api(`/papers?${params}`));
+          const r = await fetchPage(0, s);
+          setItems(r.papers ?? []);
+          setHasMore((r.papers ?? []).length === PAGE);
+          setTotal(r.total ?? null);
+          onLoadLibrary?.({ total: r.total }); // page header「共 N 篇」
         } catch (e) {
           setError(e.message);
         }
       };
+
+      const loadMore = async () => {
+        if (loadingMore || !hasMore) return;
+        setLoadingMore(true);
+        setError('');
+        try {
+          const r = await fetchPage(items.length, sort);
+          const seen = new Set(items.map((p) => p.arxiv_id));
+          const fresh = (r.papers ?? []).filter((p) => !seen.has(p.arxiv_id));
+          setItems(items.concat(fresh));
+          setHasMore((r.papers ?? []).length === PAGE);
+          setTotal(r.total ?? null);
+        } catch (e) {
+          setError(e.message);
+        } finally {
+          setLoadingMore(false);
+        }
+      };
       useEffect(() => { void search(); }, []); // initial listing
 
-      const papers = library?.papers ?? [];
+      const papers = items;
       return h('div', { className: 'arxiv-card' },
         h('div', { className: 'arxiv-row' },
           h('input', {
@@ -834,7 +870,8 @@ function mathToUnicode(text) {
         error ? h('div', { className: 'arxiv-error' }, error) : null,
         papers.length === 0
           ? h('span', { className: 'arxiv-sub' }, '没有匹配的论文。')
-          : papers.map((p) =>
+          : h('div', null,
+              papers.map((p) =>
               h('div', { key: p.arxiv_id, className: 'arxiv-paper' },
                 h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title' }, p.title),
                 p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
@@ -866,6 +903,17 @@ function mathToUnicode(text) {
                     onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
                   }) : null,
                   h(PaperNotes, { arxivId: p.arxiv_id })) : null)),
+              // Pagination footer: full page ⇒ maybe more; short page ⇒ the end.
+              h('div', { className: 'arxiv-row', style: { justifyContent: 'center', marginTop: 8, gap: 10 } },
+                h('span', { className: 'arxiv-meta' },
+                  `已显示 ${items.length} 篇` +
+                  (total !== null && !query.trim() && !feedback ? ` / 库中共 ${total} 篇` : '')),
+                hasMore
+                  ? h('button', {
+                      className: 'arxiv-btn', type: 'button', disabled: loadingMore, onClick: () => void loadMore(),
+                      title: '继续加载下一页（每页 50 篇）',
+                    }, loadingMore ? '加载中…' : `加载更多（+${PAGE}）`)
+                  : h('span', { className: 'arxiv-meta', style: { opacity: 0.6 } }, '已到底部'))),
       );
     }
 
