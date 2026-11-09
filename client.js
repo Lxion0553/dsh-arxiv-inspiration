@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui7-mainpage';
+    const BUILD = '0.5.2-ui8-mainfix';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -167,18 +167,21 @@ function mathToUnicode(text) {
 .arxiv-title-zh { color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 600; margin-top: 2px; }
 .arxiv-quote-zh { margin-top: 2px; }
 .arxiv-notes-layout { display: flex; gap: 14px; margin-top: 10px; align-items: stretch; }
-.arxiv-notes-list { width: 280px; flex: none; max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.arxiv-notes-list { width: 280px; flex: none; max-height: calc(100vh - 240px); overflow: auto; display: flex; flex-direction: column; gap: 6px; }
 .arxiv-note-item { text-align: left; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 12px; line-height: 1.5; }
 .arxiv-note-item[data-on='true'] { border-color: var(--dsw-alias-brand-primary); }
 .arxiv-note-item-title { font-weight: 600; font-size: 12.5px; }
 .arxiv-notes-view { flex: 1; min-width: 0; }
-.arxiv-note-page { max-height: 72vh; overflow: auto; padding: 4px 2px; white-space: normal; font-size: 13px; }
+.arxiv-note-page { max-height: calc(100vh - 240px); overflow: auto; padding: 4px 2px; white-space: normal; font-size: 14px; line-height: 1.7; }
 .arxiv-note-page :where(h1, h2, h3, h4) { margin: 14px 0 6px; line-height: 1.4; }
 .arxiv-note-page :where(p, li) { white-space: normal; }
 .arxiv-note-page :where(pre, code) { white-space: pre-wrap; word-break: break-word; }
 .arxiv-note-page img { max-width: 100%; border-radius: 6px; }
-.arxiv-mainwrap { padding: 18px 26px 40px; max-width: 1280px; margin: 0 auto; }
-.arxiv-mainhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
+/* The main seat does not scroll itself: the page must own its viewport
+ * height (same pattern as the memory explorer) and scroll internally. */
+.arxiv-mainwrap { height: calc(100vh - 48px); min-height: 0; display: flex; flex-direction: column; padding: 14px 22px 20px; max-width: 1320px; margin: 0 auto; box-sizing: border-box; }
+.arxiv-mainhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; flex: none; }
+.arxiv-mainscroll { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 6px 20px 0; }
 `;
 
     function Field(label, children) {
@@ -1277,7 +1280,7 @@ function mathToUnicode(text) {
           onClose ? h('button', {
             className: 'arxiv-fb', type: 'button', onClick: onClose,
           }, '✕ 关闭') : null),
-        h(Page));
+        h('div', { className: 'arxiv-mainscroll' }, h(Page)));
     }
 
     /** Sidebar panel-list icon: two stacked sheets with an arXiv dot. */
