@@ -11,6 +11,8 @@
  * - Plugin config lives in ~/.dsh-arxiv-inspiration/config.json.
  */
 
+import { existsSync } from 'node:fs';
+
 import { registerRoutes, startRecheck } from './lib/server.js';
 import { fetchById } from './lib/arxiv.js';
 import { draftProfileRevision } from './lib/profile.js';
@@ -177,7 +179,8 @@ export function apply(ctx) {
             'search_papers: query the accumulated paper library (every paper ever fetched by a survey, ' +
             'with scores, feedback, and Chinese translations when available). ' +
             'get_paper: full library entry for one arxiv_id, plus its deep-read-note state ' +
-            '(analysis_path, has_analysis, analysis_head) — always call this before writing a note. ' +
+            '(analysis_path, has_analysis, analysis_head, and agentero_note_path when an external ' +
+            'paper-reader deep-dive exists) — always call this before writing a note. ' +
             'read_analysis: full deep-read note (md) for one arxiv_id. ' +
             'write_analysis: create or replace the full deep-read note md for one arxiv_id ' +
             '(creates the standard header when the note does not exist yet; pass the complete body — ' +
@@ -390,6 +393,11 @@ export function apply(ctx) {
           const result = await kb.getPaperWithAnalysis(args.arxiv_id);
           if (!result.paper) {
             throw new Error(`paper ${args.arxiv_id} not in library — add it first with add_paper`);
+          }
+          // External agentero paper-reader note, referenced by path only.
+          const agenteroDir = (await readConfig()).agenteroPapersDir;
+          if (agenteroDir && existsSync(kb.agenteroNotePath(agenteroDir, args.arxiv_id))) {
+            result.agentero_note_path = kb.agenteroNotePath(agenteroDir, args.arxiv_id);
           }
           return JSON.parse(JSON.stringify(result));
         }

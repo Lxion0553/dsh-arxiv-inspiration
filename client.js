@@ -1,8 +1,11 @@
 /**
- * arXiv Inspiration — settings page (client half).
+ * arXiv Inspiration — client half.
  *
- * Registers one `settings.section` page: configuration form, survey launcher,
- * result browser with per-paper feedback, and manual push-to-session.
+ * Full page in the main area via a `sidebar.panellist` button (same pattern
+ * as the memory explorer), with the settings.section registration kept as a
+ * fallback. Tabs: survey launcher + result browser with per-paper feedback,
+ * library, deep-read notes (incl. external agentero paper-reader deep-dives,
+ * referenced only), and the push collection.
  * All data flows through the host HTTP API at /arxiv-inspiration/api/*.
  */
 
@@ -14,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui6-hierarchy';
+    const BUILD = '0.5.2-ui7-mainpage';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -163,6 +166,19 @@ function mathToUnicode(text) {
 .arxiv-paper-title { color: var(--dsw-alias-brand-primary); text-decoration: none; font-size: 13px; font-weight: 600; }
 .arxiv-title-zh { color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 600; margin-top: 2px; }
 .arxiv-quote-zh { margin-top: 2px; }
+.arxiv-notes-layout { display: flex; gap: 14px; margin-top: 10px; align-items: stretch; }
+.arxiv-notes-list { width: 280px; flex: none; max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.arxiv-note-item { text-align: left; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; padding: 8px 10px; cursor: pointer; font-size: 12px; line-height: 1.5; }
+.arxiv-note-item[data-on='true'] { border-color: var(--dsw-alias-brand-primary); }
+.arxiv-note-item-title { font-weight: 600; font-size: 12.5px; }
+.arxiv-notes-view { flex: 1; min-width: 0; }
+.arxiv-note-page { max-height: 72vh; overflow: auto; padding: 4px 2px; white-space: normal; font-size: 13px; }
+.arxiv-note-page :where(h1, h2, h3, h4) { margin: 14px 0 6px; line-height: 1.4; }
+.arxiv-note-page :where(p, li) { white-space: normal; }
+.arxiv-note-page :where(pre, code) { white-space: pre-wrap; word-break: break-word; }
+.arxiv-note-page img { max-width: 100%; border-radius: 6px; }
+.arxiv-mainwrap { padding: 18px 26px 40px; max-width: 1280px; margin: 0 auto; }
+.arxiv-mainhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
 `;
 
     function Field(label, children) {
@@ -324,6 +340,13 @@ function mathToUnicode(text) {
             onChange: (e) => setConfig({ ...config, researchContext: e.target.value }),
             placeholder: '默认 research_context：描述当前研究方向/阶段，用于筛选偏好（也可编辑 ~/.dsh-arxiv-inspiration/profile.md）',
           })),
+        h('div', { className: 'arxiv-row' },
+          h('span', { className: 'arxiv-label' }, 'paper-reader 目录'),
+          h('input', {
+            className: 'arxiv-input', value: config.agenteroPapersDir ?? '',
+            onChange: (e) => setConfig({ ...config, agenteroPapersDir: e.target.value }),
+            placeholder: 'agentero paper-reader 笔记库根目录（…/papers/papers），留空关闭；只做路径引用',
+          })),
         error ? h('div', { className: 'arxiv-error' }, error) : null,
         h('div', { className: 'arxiv-row' },
           h('button', { className: 'arxiv-btn arxiv-btn-ghost', disabled: !dirty || saving, onClick: onSave, type: 'button' },
@@ -413,7 +436,7 @@ function mathToUnicode(text) {
 
     const RECHECK_STAGE_CN = { coarse: '粗筛', fine: '精排', translate: '翻译', done: '完成' };
 
-    function SurveyCard({ survey, sessions, onPushed, collectionIds, onCollectionChange }) {
+    function SurveyCard({ survey, sessions, onPushed, collectionIds, onCollectionChange, onOpenNotes }) {
       const [open, setOpen] = useState(false);
       const [sessionId, setSessionId] = useState('');
       const [busy, setBusy] = useState(false);
@@ -518,7 +541,11 @@ function mathToUnicode(text) {
               p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${mathToUnicode(p.inspiration)}`) : null,
               p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
               p.pdf_analysis_summary || p.pdf_analysis
-                ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '', analysisPath: p.analysis_path })
+                ? h(AnalysisBlock, {
+                    arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '',
+                    analysisPath: p.analysis_path,
+                    onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
+                  })
                 : null,
               h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
                 h('button', {
@@ -597,11 +624,18 @@ function mathToUnicode(text) {
       const [starting, setStarting] = useState(false);
       const [startError, setStartError] = useState('');
       const [tab, setTab] = useState('survey');
+      const [notesView, setNotesView] = useState(null);
       const [library, setLibrary] = useState(null);
       const [collection, setCollection] = useState(null);
       const onLoadLibrary = setLibrary;
       const collIds = new Set((collection?.items ?? []).map((i) => i.arxiv_id));
       const timerRef = useRef(null);
+      // Jump to the notes tab with one paper preselected (used by the cards'
+      // 「⤢ 全宽阅读」 buttons and by the library rows).
+      const openNotes = (arxivId, source = 'mine') => {
+        setNotesView({ arxivId, source });
+        setTab('notes');
+      };
 
       const refresh = useCallback(async () => {
         try {
@@ -672,6 +706,7 @@ function mathToUnicode(text) {
         h('div', { className: 'arxiv-row', style: { gap: 6 } },
           h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'survey'), type: 'button', onClick: () => setTab('survey') }, '调研'),
           h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'library'), type: 'button', onClick: () => setTab('library') }, '论文库'),
+          h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'notes'), type: 'button', onClick: () => setTab('notes') }, '深读笔记'),
           h('button', { className: 'arxiv-chip', 'data-on': String(tab === 'collection'), type: 'button', onClick: () => setTab('collection') },
             `清单${collection ? ` (${collection.total})` : ''}`),
           tab === 'library'
@@ -679,8 +714,10 @@ function mathToUnicode(text) {
             : null,
           h('span', { className: 'arxiv-meta', style: { marginLeft: 'auto', opacity: 0.6 } },
             `build ${BUILD}${MarkdownText ? '' : ' · 无 md 渲染器'}`)),
-        tab === 'library'
-          ? h(LibraryTab, { library, onLoadLibrary, collectionIds: collIds, onCollectionChange: refreshCollection })
+        tab === 'notes'
+          ? h(NotesTab, { view: notesView, setView: setNotesView })
+          : tab === 'library'
+          ? h(LibraryTab, { library, onLoadLibrary, collectionIds: collIds, onCollectionChange: refreshCollection, onOpenNotes: openNotes })
           : tab === 'collection'
             ? h(CollectionTab, { collection, sessions, refreshCollection })
             : h('div', null,
@@ -700,7 +737,7 @@ function mathToUnicode(text) {
                 startError ? h('div', { className: 'arxiv-error' }, startError) : null,
                 surveys.length === 0
                   ? h('span', { className: 'arxiv-sub' }, '还没有调研记录。点击「启动调研」开始。')
-                  : surveys.map((s) => h(SurveyCard, { key: s.id, survey: s, sessions, onPushed: refresh, collectionIds: collIds, onCollectionChange: refreshCollection })),
+                  : surveys.map((s) => h(SurveyCard, { key: s.id, survey: s, sessions, onPushed: refresh, collectionIds: collIds, onCollectionChange: refreshCollection, onOpenNotes: openNotes })),
               ),
               h(RecheckPanel, { running, onLaunched: refresh })),
         h('div', { className: 'arxiv-sub' },
@@ -709,7 +746,7 @@ function mathToUnicode(text) {
     }
 
     /** Paper-library browser tab: search + filters over papers.jsonl. */
-    function LibraryTab({ library, onLoadLibrary, collectionIds, onCollectionChange }) {
+    function LibraryTab({ library, onLoadLibrary, collectionIds, onCollectionChange, onOpenNotes }) {
       const [query, setQuery] = useState('');
       const [semantic, setSemantic] = useState(false);
       const [feedback, setFeedback] = useState('');
@@ -821,27 +858,112 @@ function mathToUnicode(text) {
                 expanded === p.arxiv_id ? h('div', null,
                   h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
                   p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh)) : null,
-                  p.pdf_analysis || p.has_analysis ? h(AnalysisBlock, { arxivId: p.arxiv_id, summary: p.pdf_analysis_summary, analysisPath: p.analysis_path }) : null,
+                  p.pdf_analysis || p.has_analysis ? h(AnalysisBlock, {
+                    arxivId: p.arxiv_id, summary: p.pdf_analysis_summary, analysisPath: p.analysis_path,
+                    onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
+                  }) : null,
                   h(PaperNotes, { arxivId: p.arxiv_id })) : null)),
       );
     }
 
     /**
-     * Deep-read block (C-2): Chinese bullet summary inline; the full md note
-     * opens in its own viewer window (server-rendered page), not in the card.
+     * Deep-read block: Chinese bullet summary inline; the full note expands
+     * in place via platform MarkdownText (KaTeX).「⤢ 全宽阅读」jumps to the
+     * 深读笔记 tab for full-width reading.
      */
-    function AnalysisBlock({ arxivId, summary, analysisPath }) {
+    /**
+     * Deep-read notes tab: full-width reading page for MY deep-read notes
+     * (survey-generated Chinese digests + agent-written notes) and for
+     * external agentero paper-reader deep-dives. The latter are referenced
+     * only — rendered straight from the external NOTES.md (with image links
+     * rewritten to same-origin asset URLs), never merged into our notes.
+     */
+    function NotesTab({ view, setView }) {
+      const [entries, setEntries] = useState(null);
+      const [mine, setMine] = useState(undefined); // {md} | {err}
+      const [agent, setAgent] = useState(undefined); // {md, path} | {err}
+      const [source, setSource] = useState('mine');
+      useEffect(() => {
+        void (async () => {
+          try {
+            const r = await api('/papers?sort=deepread&limit=200');
+            setEntries((r.papers ?? []).filter((p) => p.has_analysis || p.has_agentero));
+          } catch {
+            setEntries([]);
+          }
+        })();
+      }, []);
+      useEffect(() => {
+        setMine(undefined);
+        setAgent(undefined);
+        if (!view?.arxivId) return undefined;
+        const id = view.arxivId;
+        let alive = true;
+        void (async () => {
+          try {
+            const r = await api(`/papers/${encodeURIComponent(id)}/analysis`);
+            if (alive) setMine({ md: r.markdown ?? '' });
+          } catch (e) {
+            if (alive) setMine({ err: e.message });
+          }
+        })();
+        void (async () => {
+          try {
+            const r = await api(`/papers/${encodeURIComponent(id)}/agentero`);
+            if (alive) setAgent({ md: r.rendered || r.markdown || '', path: r.path });
+          } catch (e) {
+            if (alive) setAgent({ err: e.message });
+          }
+        })();
+        setSource(view.source === 'agentero' ? 'agentero' : 'mine');
+        return () => { alive = false; };
+      }, [view?.arxivId, view?.source]);
+      const cur = entries?.find((e) => e.arxiv_id === view?.arxivId);
+      const pane = source === 'agentero' ? agent : mine;
+      return h('div', { className: 'arxiv-card' },
+        h('h3', { className: 'arxiv-title', style: { margin: 0 } }, '深读笔记 / Deep-Read Notes'),
+        h('div', { className: 'arxiv-meta' },
+          '📄 我的深读（调研生成的中文综合） · 📖 paper-reader 讲解（agentero 外部笔记，含图，只引用不合并）。左侧选择论文，右侧全宽阅读（KaTeX 公式）。'),
+        h('div', { className: 'arxiv-notes-layout' },
+          h('div', { className: 'arxiv-notes-list' },
+            entries === null ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
+              : entries.length === 0 ? h('div', { className: 'arxiv-sub' }, '暂无深读笔记（调研生成的深读会出现在这里）')
+                : entries.map((e) => h('button', {
+                    key: e.arxiv_id, type: 'button',
+                    className: 'arxiv-note-item',
+                    'data-on': String(e.arxiv_id === view?.arxivId),
+                    onClick: () => setView({ arxivId: e.arxiv_id, source: e.has_analysis ? 'mine' : 'agentero' }),
+                  },
+                    h('div', { className: 'arxiv-note-item-title' }, e.title_zh || e.title || e.arxiv_id),
+                    h('div', { className: 'arxiv-meta' },
+                      `${e.arxiv_id} ${e.has_analysis ? '📄' : ''}${e.has_agentero ? '📖' : ''}`)))),
+          h('div', { className: 'arxiv-notes-view' },
+            !view?.arxivId
+              ? h('div', { className: 'arxiv-sub' }, '从左侧选择一篇论文查看笔记。')
+              : h('div', null,
+                h('div', { className: 'arxiv-row', style: { marginBottom: 8, gap: 6 } },
+                  mine && !mine.err
+                    ? h('button', { className: 'arxiv-chip', 'data-on': String(source === 'mine'), type: 'button', onClick: () => setSource('mine') }, '📄 我的深读')
+                    : null,
+                  agent && !agent.err
+                    ? h('button', { className: 'arxiv-chip', 'data-on': String(source === 'agentero'), type: 'button', onClick: () => setSource('agentero') }, '📖 paper-reader 讲解')
+                    : null,
+                  cur ? h('a', {
+                    className: 'arxiv-meta', href: cur.url ?? `https://arxiv.org/abs/${cur.arxiv_id}`,
+                    target: '_blank', rel: 'noopener',
+                  }, 'arXiv ↗') : null),
+                pane === undefined ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
+                  : pane.err ? h('div', { className: 'arxiv-sub' }, `加载失败：${pane.err}`)
+                    : MarkdownText
+                      ? h('div', { className: 'arxiv-note-page' }, h(MarkdownText, { text: pane.md ?? '' }))
+                      : h('pre', { className: 'arxiv-note-pre' }, mathToUnicode(pane.md ?? ''))))));
+    }
+
+    function AnalysisBlock({ arxivId, summary, analysisPath, onOpenNotes }) {
       const [open, setOpen] = useState(false);
       const [md, setMd] = useState(null);
       const [err, setErr] = useState(null);
       const [busy, setBusy] = useState(false);
-      const openViewer = () => {
-        window.open(
-          `/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis/view`,
-          '_blank',
-          'noopener',
-        );
-      };
       const toggle = async () => {
         if (open) { setOpen(false); return; }
         setOpen(true);
@@ -865,10 +987,10 @@ function mathToUnicode(text) {
             h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
           h('button', { className: 'arxiv-fb', type: 'button', onClick: toggle },
             open ? '⌃ 收起完整笔记' : '📄 展开完整笔记（本页渲染）'),
-          h('button', {
-            className: 'arxiv-fb', type: 'button', onClick: openViewer,
-            style: { marginLeft: 6 }, title: '在新标签页打开独立 HTML 页面（旧方式）',
-          }, '↗ 独立页'),
+          onOpenNotes ? h('button', {
+            className: 'arxiv-fb', type: 'button', onClick: onOpenNotes,
+            style: { marginLeft: 6 }, title: '在「深读笔记」页全宽阅读（KaTeX 公式 + paper-reader 讲解）',
+          }, '⤢ 全宽阅读') : null,
           open ? h('div', { className: 'arxiv-note' },
             busy ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
               : err ? h('div', { className: 'arxiv-sub' }, `笔记加载失败：${err}`)
@@ -1147,13 +1269,63 @@ function mathToUnicode(text) {
       }
     }
 
+    /** Full-page wrapper for the `main` seat (sidebar button entry). */
+    function MainPage({ onClose }) {
+      return h('div', { className: 'arxiv-mainwrap' },
+        h('div', { className: 'arxiv-mainhead' },
+          h('h2', { style: { margin: 0, fontSize: 16, fontWeight: 700 } }, '论文调研 · arXiv Inspiration'),
+          onClose ? h('button', {
+            className: 'arxiv-fb', type: 'button', onClick: onClose,
+          }, '✕ 关闭') : null),
+        h(Page));
+    }
+
+    /** Sidebar panel-list icon: two stacked sheets with an arXiv dot. */
+    function PanelIcon(props) {
+      const size = (props && typeof props.size === 'number' && props.size) || 16;
+      const active = !!(props && props.active);
+      const color = active ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-tertiary)';
+      return h('svg', {
+        viewBox: '0 0 16 16', width: size, height: size,
+        'aria-hidden': 'true', style: { display: 'block' },
+      },
+        h('path', {
+          d: 'M3.2 2.4h7.1a1 1 0 0 1 1 1v8.2h-1.2V3.6H3.2v8.2h1.2v1.2H3.2a1 1 0 0 1-1-1V3.4a1 1 0 0 1 1-1z',
+          fill: color,
+        }),
+        h('path', {
+          d: 'M6.1 4.6h6.7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6.1a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zm.2 1.2v6.6h6.3V5.8H6.3z',
+          fill: color,
+        }),
+        h('circle', { cx: 9.45, cy: 9.1, r: 1.05, fill: color }));
+    }
+
     return {
-      // No sidebar dependency: `sidebarRight.openResource()` needs a mounted
-      // session surface, which a settings page does not have. The card renders
-      // the note in place with the platform MarkdownText instead.
       inject: ['slots'],
       apply(ctx) {
         ensureStyleTag();
+        // Open/close our main-area page. `layout` is not injected (this plugin
+        // works on shells without it); selectPanel is best-effort.
+        const selectPanel = (id) => {
+          try { ctx.get('layout')?.selectPanel?.(id); } catch { /* optional seat */ }
+        };
+        // Primary entry: a sidebar panel-list button opening a full main page
+        // (same pattern as the memory explorer). Falls back silently when the
+        // seats are absent; the settings.section page below always works.
+        try {
+          ctx.slots.inject('main', () =>
+            ctx.slots.register(
+              { name: 'main', key: MODULE_ID, inject: () => ({ onClose: () => selectPanel(null) }) },
+              MainPage,
+            ));
+        } catch (e) { console.warn('[arxiv-inspiration] main seat unavailable', e); }
+        try {
+          ctx.slots.inject('sidebar.panellist', () =>
+            ctx.slots.register(
+              { name: 'sidebar.panellist', id: MODULE_ID, order: 8, label: '论文调研' },
+              PanelIcon,
+            ));
+        } catch (e) { console.warn('[arxiv-inspiration] sidebar.panellist seat unavailable', e); }
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(
             { name: 'settings.section', id: 'arxiv-inspiration', order: 90, label: 'arXiv Inspiration' },
