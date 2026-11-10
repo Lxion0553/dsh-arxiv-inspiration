@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui13-prdispatch';
+    const BUILD = '0.5.2-ui14-mdsummary';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -148,6 +148,9 @@ function mathToUnicode(text) {
 .arxiv-meta { color: var(--dsw-alias-label-secondary); font-size: 11px; }
 .arxiv-fb { font-size: 12px; cursor: pointer; border-radius: 5px; padding: 3px 9px; background: transparent; border: 1px solid var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); }
 .arxiv-deepread { white-space: normal; }
+.arxiv-deepread-md { font-size: 12px; line-height: 1.55; }
+.arxiv-deepread-md :where(p, ul, ol) { margin: 2px 0; }
+.arxiv-deepread-md :where(ul, ol) { padding-left: 18px; }
 .arxiv-note { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; max-height: 520px; overflow: auto; white-space: normal; font-size: 13px; }
 .arxiv-note :where(h1, h2, h3, h4) { margin: 12px 0 6px; line-height: 1.4; }
 .arxiv-note :where(p, li) { white-space: normal; }
@@ -1109,16 +1112,24 @@ function mathToUnicode(text) {
      * paper-reader dispatch button.
      */
     function AnalysisBlock({ arxivId, summary, onOpenNotes }) {
-      const lines = String(summary ?? '').split('\n').filter(Boolean);
+      // The stored summary is a Markdown bullet list carrying inline LaTeX
+      // (`- 方法核心：… $g\bar\alpha_k$`). Rendering it line-by-line left the
+      // "- " markers and raw TeX on screen, so hand the whole block to the
+      // platform MarkdownText (bullets + KaTeX); the plain per-line fallback
+      // stays only for the no-renderer case.
+      const text = String(summary ?? '').trim();
+      const header = h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点');
+      const body = !text
+        ? null
+        : MarkdownText
+          ? h('div', { className: 'arxiv-deepread-md' }, header, h(MarkdownText, { text }))
+          : h('div', null, header,
+              text.split('\n').filter(Boolean).map((line, i) =>
+                h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))));
       return h('div', { className: 'arxiv-abs' },
         h('div', { className: 'arxiv-deepread' },
-          // Papers without any note still need the entry row (jump + dispatch),
-          // but a "深读要点" heading over an empty body is pure noise.
-          lines.length
-            ? h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点')
-            : null,
-          lines.map((line, i) => h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
-          h('div', { className: 'arxiv-row', style: { marginTop: lines.length ? 6 : 0, gap: 6 } },
+          body,
+          h('div', { className: 'arxiv-row', style: { marginTop: text ? 6 : 0, gap: 6 } },
             onOpenNotes
               ? h('button', {
                   className: 'arxiv-fb', type: 'button', onClick: onOpenNotes,
@@ -1126,47 +1137,6 @@ function mathToUnicode(text) {
                 }, '📄 查看深读笔记 →')
               : null,
             h(PaperReaderBtn, { arxivId }))));
-    }
-
-    function AnalysisBlock({ arxivId, summary, analysisPath, onOpenNotes }) {
-      const [open, setOpen] = useState(false);
-      const [md, setMd] = useState(null);
-      const [err, setErr] = useState(null);
-      const [busy, setBusy] = useState(false);
-      const toggle = async () => {
-        if (open) { setOpen(false); return; }
-        setOpen(true);
-        if (md !== null || busy) return;
-        setBusy(true);
-        try {
-          const r = await fetch(`/arxiv-inspiration/api/papers/${encodeURIComponent(arxivId)}/analysis`);
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const data = await r.json();
-          setMd(data.markdown ?? '');
-        } catch (e) {
-          setErr(String((e && e.message) || e));
-        } finally {
-          setBusy(false);
-        }
-      };
-      return h('div', { className: 'arxiv-abs' },
-        h('div', { className: 'arxiv-deepread' },
-          h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点'),
-          (summary ?? '').split('\n').filter(Boolean).map((line, i) =>
-            h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
-          h('button', { className: 'arxiv-fb', type: 'button', onClick: toggle },
-            open ? '⌃ 收起完整笔记' : '📄 展开完整笔记（本页渲染）'),
-          onOpenNotes ? h('button', {
-            className: 'arxiv-fb', type: 'button', onClick: onOpenNotes,
-            style: { marginLeft: 6 }, title: '在「深读笔记」页全宽阅读（KaTeX 公式 + paper-reader 讲解）',
-          }, '⤢ 全宽阅读') : null,
-          open ? h('div', { className: 'arxiv-note' },
-            busy ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
-              : err ? h('div', { className: 'arxiv-sub' }, `笔记加载失败：${err}`)
-                : MarkdownText
-                  ? h(MarkdownText, { text: md ?? '' })
-                  : h('pre', { className: 'arxiv-note-pre' }, mathToUnicode(md ?? ''))
-          ) : null));
     }
 
     /**
