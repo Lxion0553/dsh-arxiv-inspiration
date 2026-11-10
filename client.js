@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui11-window-gate';
+    const BUILD = '0.5.2-ui12-discovery-lane';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -488,6 +488,50 @@ function mathToUnicode(text) {
         }
       };
 
+      // One block per paper (recommended + discovery sections share it):
+      // bilingual title + abstract, Chinese reason/inspiration/action, and its
+      // feedback buttons. Carry-over papers are labeled ↩️ 回捞 via source.
+      const renderPaper = (p, i) =>
+        h('div', { key: p.arxiv_id, className: 'arxiv-paper', style: { marginTop: i === 0 ? 4 : 10 } },
+          h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title' },
+            `${i + 1}. ${p.title}`),
+          p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
+          h('div', { className: 'arxiv-meta' },
+            `${(p.categories || []).join(', ')} · 相关度 ${p.score ?? '-'}/40 · ${p.arxiv_id}` +
+            (p.published ? ` · 投稿 ${utc8fmt(p.published).slice(0, 10)}` : '') +
+            (p.source === 'carryover' ? ' · ↩️ 回捞' : '')),
+          h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
+          p.abstract_zh
+            ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh))
+            : h('div', { className: 'arxiv-meta' }, '（中文摘要缺失）'),
+          p.reason ? h('div', { className: 'arxiv-abs' }, `推荐理由：${mathToUnicode(p.reason)}`) : null,
+          p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${mathToUnicode(p.inspiration)}`) : null,
+          p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
+          p.pdf_analysis_summary || p.pdf_analysis
+            ? h(AnalysisBlock, {
+                arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '',
+                analysisPath: p.analysis_path,
+                onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
+              })
+            : null,
+          h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
+            h('button', {
+              className: 'arxiv-fb', 'data-on': String(collectionIds?.has(p.arxiv_id) ?? false), type: 'button',
+              onClick: async () => {
+                try {
+                  await api('/collection', { method: 'POST', body: { arxiv_id: p.arxiv_id, title: p.title, note: p.reason ?? '' } });
+                  onCollectionChange?.();
+                } catch (e) { setError(e.message); }
+              },
+              title: '加入推送清单：攒够一批后在「清单」标签一次性注入给某个会话',
+            }, collectionIds?.has(p.arxiv_id) ? '✓ 已在清单' : '＋ 清单'),
+            h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'interested'), type: 'button', onClick: () => sendFeedback(p, 'interested') }, '👍 感兴趣'),
+            h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'read'), type: 'button', onClick: () => sendFeedback(p, 'read') }, '📖 已读'),
+            h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'not_interested'), type: 'button', onClick: () => sendFeedback(p, 'not_interested') }, '👎 不感兴趣'),
+            savedNote[p.arxiv_id]
+              ? h('span', { className: 'arxiv-meta' }, savedNote[p.arxiv_id] === 'saving' ? '记录中…' : savedNote[p.arxiv_id])
+              : null));
+
       return h('div', { className: 'arxiv-survey' },
         h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
           h('div', { className: 'arxiv-row' },
@@ -504,6 +548,7 @@ function mathToUnicode(text) {
                   (result
                     ? `抓取 ${result.fetched_count ?? '-'}` +
                       (result.carryover_count ? ` + 回捞 ${result.carryover_count}` : '') +
+                      (result.discovery?.length ? ` + 语义发现 ${result.discovery.length}` : '') +
                       ` → 候选 ${result.candidate_count ?? '-'} → 推荐 ${result.recommended?.length ?? 0} 篇` +
                       (result.push_limits
                         ? `（预算 ${result.push_limits.maxPush}/${result.push_limits.pushCount}）`
@@ -527,47 +572,19 @@ function mathToUnicode(text) {
           : null,
         survey.status_detail ? h('div', { className: 'arxiv-error' }, survey.status_detail) : null,
         open && result ? h('div', null,
-          // One block per recommended paper: bilingual title + abstract,
-          // Chinese reason/inspiration/action, and its feedback buttons.
-          (result.recommended ?? []).map((p, i) =>
-            h('div', { key: p.arxiv_id, className: 'arxiv-paper', style: { marginTop: i === 0 ? 4 : 10 } },
-              h('a', { href: p.url, target: '_blank', rel: 'noreferrer', className: 'arxiv-paper-title' },
-                `${i + 1}. ${p.title}`),
-              p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
-              h('div', { className: 'arxiv-meta' },
-                `${(p.categories || []).join(', ')} · 相关度 ${p.score ?? '-'}/40 · ${p.arxiv_id}` +
-                (p.published ? ` · 投稿 ${utc8fmt(p.published).slice(0, 10)}` : '')),
-              h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
-              p.abstract_zh
-                ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh))
-                : h('div', { className: 'arxiv-meta' }, '（中文摘要缺失）'),
-              p.reason ? h('div', { className: 'arxiv-abs' }, `推荐理由：${mathToUnicode(p.reason)}`) : null,
-              p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${mathToUnicode(p.inspiration)}`) : null,
-              p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
-              p.pdf_analysis_summary || p.pdf_analysis
-                ? h(AnalysisBlock, {
-                    arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '',
-                    analysisPath: p.analysis_path,
-                    onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
-                  })
-                : null,
-              h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
-                h('button', {
-                  className: 'arxiv-fb', 'data-on': String(collectionIds?.has(p.arxiv_id) ?? false), type: 'button',
-                  onClick: async () => {
-                    try {
-                      await api('/collection', { method: 'POST', body: { arxiv_id: p.arxiv_id, title: p.title, note: p.reason ?? '' } });
-                      onCollectionChange?.();
-                    } catch (e) { setError(e.message); }
-                  },
-                  title: '加入推送清单：攒够一批后在「清单」标签一次性注入给某个会话',
-                }, collectionIds?.has(p.arxiv_id) ? '✓ 已在清单' : '＋ 清单'),
-                h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'interested'), type: 'button', onClick: () => sendFeedback(p, 'interested') }, '👍 感兴趣'),
-                h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'read'), type: 'button', onClick: () => sendFeedback(p, 'read') }, '📖 已读'),
-                h('button', { className: 'arxiv-fb', 'data-on': String(feedback[p.arxiv_id] === 'not_interested'), type: 'button', onClick: () => sendFeedback(p, 'not_interested') }, '👎 不感兴趣'),
-                savedNote[p.arxiv_id]
-                  ? h('span', { className: 'arxiv-meta' }, savedNote[p.arxiv_id] === 'saving' ? '记录中…' : savedNote[p.arxiv_id])
-                  : null))),
+          // Recommended papers (weekday-window lane): one block per paper.
+          (result.recommended ?? []).map(renderPaper),
+          // Semantic-discovery picks (语义发现): alphaXiv relevance-ranked,
+          // deliberately OUTSIDE the weekday window (user decision 2026-11-10).
+          result.discovery?.length
+            ? h('div', { style: { marginTop: 14 } },
+                h('div', { className: 'arxiv-row' },
+                  h('span', { className: 'arxiv-chip', 'data-on': 'true', style: { cursor: 'default' } },
+                    `🔍 语义发现（不受星期窗口限制）· ${result.discovery.length} 篇`)),
+                h('div', { className: 'arxiv-meta', style: { marginTop: 2 } },
+                  'alphaXiv 语义检索按相关性补充的论文，投稿时间不限于此调研的星期窗口'),
+                result.discovery.map(renderPaper))
+            : null,
           // Worth-a-look tier (库内重评): fine-ranked papers right below the
           // picks — English title + one-line reason + quick add to collection.
           result.worth_a_look?.length
