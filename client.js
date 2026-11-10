@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui15-hasnote';
+    const BUILD = '0.5.2-ui16-hasnote2';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -522,6 +522,7 @@ function mathToUnicode(text) {
           p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
           h(AnalysisBlock, {
             arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '',
+            hasNote: Boolean(p.has_analysis || p.has_agentero),
             onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
           }),
           h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
@@ -928,6 +929,7 @@ function mathToUnicode(text) {
                   p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh)) : null,
                   h(AnalysisBlock, {
                     arxivId: p.arxiv_id, summary: p.pdf_analysis_summary,
+                    hasNote: Boolean(p.has_analysis || p.has_agentero),
                     onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
                   }),
                   h(PaperNotes, { arxivId: p.arxiv_id })) : null)),
@@ -1116,7 +1118,7 @@ function mathToUnicode(text) {
      * into the 深读笔记 page (both note sources live there), and the
      * paper-reader dispatch button.
      */
-    function AnalysisBlock({ arxivId, summary, onOpenNotes }) {
+    function AnalysisBlock({ arxivId, summary, onOpenNotes, hasNote = true }) {
       // The stored summary is a Markdown bullet list carrying inline LaTeX
       // (`- 方法核心：… $g\bar\alpha_k$`). Rendering it line-by-line left the
       // "- " markers and raw TeX on screen, so hand the whole block to the
@@ -1135,7 +1137,10 @@ function mathToUnicode(text) {
         h('div', { className: 'arxiv-deepread' },
           body,
           h('div', { className: 'arxiv-row', style: { marginTop: text ? 6 : 0, gap: 6 } },
-            onOpenNotes
+            // No note yet ⇒ nothing to read: hide the jump and keep only the
+            // dispatch button, which is how a note gets created in the first
+            // place (survey deep-read or paper-reader session).
+            hasNote && onOpenNotes
               ? h('button', {
                   className: 'arxiv-fb', type: 'button', onClick: onOpenNotes,
                   title: '在「深读笔记」页全宽阅读（KaTeX 公式 + paper-reader 讲解）',
