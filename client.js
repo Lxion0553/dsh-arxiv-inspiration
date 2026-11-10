@@ -1112,12 +1112,13 @@ function mathToUnicode(text) {
       const lines = String(summary ?? '').split('\n').filter(Boolean);
       return h('div', { className: 'arxiv-abs' },
         h('div', { className: 'arxiv-deepread' },
-          h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点'),
+          // Papers without any note still need the entry row (jump + dispatch),
+          // but a "深读要点" heading over an empty body is pure noise.
           lines.length
-            ? lines.map((line, i) => h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line)))
-            : h('div', { className: 'arxiv-meta', style: { paddingLeft: 8 } },
-                '（暂无深读摘要，点右侧按钮查看/生成完整笔记）'),
-          h('div', { className: 'arxiv-row', style: { marginTop: 6, gap: 6 } },
+            ? h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点')
+            : null,
+          lines.map((line, i) => h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line))),
+          h('div', { className: 'arxiv-row', style: { marginTop: lines.length ? 6 : 0, gap: 6 } },
             onOpenNotes
               ? h('button', {
                   className: 'arxiv-fb', type: 'button', onClick: onOpenNotes,
