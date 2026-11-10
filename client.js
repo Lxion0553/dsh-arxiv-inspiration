@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui12-discovery-lane';
+    const BUILD = '0.5.2-ui13-prdispatch';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -189,7 +189,7 @@ function mathToUnicode(text) {
         h('span', { className: 'arxiv-label' }, label), children);
     }
 
-    function ConfigForm({ config, setConfig, dirty, onSave, saving, error, modelCatalog, defaultRoute }) {
+    function ConfigForm({ config, setConfig, dirty, onSave, saving, error, modelCatalog, defaultRoute, sessions }) {
       const toggleDay = (day) => {
         const on = config.weekdays.includes(day);
         setConfig({
@@ -350,6 +350,16 @@ function mathToUnicode(text) {
             onChange: (e) => setConfig({ ...config, agenteroPapersDir: e.target.value }),
             placeholder: 'agentero paper-reader 笔记库根目录（…/papers/papers），留空关闭；只做路径引用',
           })),
+        Field('paper-reader 会话',
+          h('div', { className: 'arxiv-row' },
+            h('select', {
+              className: 'arxiv-select', value: config.paperReaderSessionId ?? '',
+              onChange: (e) => setConfig({ ...config, paperReaderSessionId: e.target.value }),
+            },
+              h('option', { value: '' }, '自动匹配「Paper Reader Command」'),
+              (sessions ?? []).map((s) => h('option', { key: s.id, value: s.id }, s.title || s.id))),
+            h('span', { className: 'arxiv-meta' },
+              '「🧠 paper-reader 精读」把论文派给哪个会话（该会话需装 paper-reader skill）。'))),
         error ? h('div', { className: 'arxiv-error' }, error) : null,
         h('div', { className: 'arxiv-row' },
           h('button', { className: 'arxiv-btn arxiv-btn-ghost', disabled: !dirty || saving, onClick: onSave, type: 'button' },
@@ -507,13 +517,10 @@ function mathToUnicode(text) {
           p.reason ? h('div', { className: 'arxiv-abs' }, `推荐理由：${mathToUnicode(p.reason)}`) : null,
           p.inspiration ? h('div', { className: 'arxiv-abs' }, `💡 启发：${mathToUnicode(p.inspiration)}`) : null,
           p.suggested_action ? h('div', { className: 'arxiv-abs' }, `▶ 建议行动：${mathToUnicode(p.suggested_action)}`) : null,
-          p.pdf_analysis_summary || p.pdf_analysis
-            ? h(AnalysisBlock, {
-                arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '',
-                analysisPath: p.analysis_path,
-                onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
-              })
-            : null,
+          h(AnalysisBlock, {
+            arxivId: p.arxiv_id, summary: p.pdf_analysis_summary ?? '',
+            onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
+          }),
           h('div', { className: 'arxiv-row', style: { marginTop: 4 } },
             h('button', {
               className: 'arxiv-fb', 'data-on': String(collectionIds?.has(p.arxiv_id) ?? false), type: 'button',
@@ -745,7 +752,7 @@ function mathToUnicode(text) {
               h(ProfileCard),
               h(ConfigForm, {
                 config, setConfig, dirty, onSave: save, saving, error: configError,
-                modelCatalog, defaultRoute: modelCatalog?.default ?? null,
+                modelCatalog, defaultRoute: modelCatalog?.default ?? null, sessions,
               }),
               h('div', { className: 'arxiv-card' },
                 h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
@@ -916,10 +923,10 @@ function mathToUnicode(text) {
                 expanded === p.arxiv_id ? h('div', null,
                   h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
                   p.abstract_zh ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh)) : null,
-                  p.pdf_analysis || p.has_analysis ? h(AnalysisBlock, {
-                    arxivId: p.arxiv_id, summary: p.pdf_analysis_summary, analysisPath: p.analysis_path,
+                  h(AnalysisBlock, {
+                    arxivId: p.arxiv_id, summary: p.pdf_analysis_summary,
                     onOpenNotes: onOpenNotes ? () => onOpenNotes(p.arxiv_id, 'mine') : undefined,
-                  }) : null,
+                  }),
                   h(PaperNotes, { arxivId: p.arxiv_id })) : null)),
               // Pagination footer: full page ⇒ maybe more; short page ⇒ the end.
               h('div', { className: 'arxiv-row', style: { justifyContent: 'center', marginTop: 8, gap: 10 } },
@@ -952,16 +959,19 @@ function mathToUnicode(text) {
       const [mine, setMine] = useState(undefined); // {md} | {err}
       const [agent, setAgent] = useState(undefined); // {md, path} | {err}
       const [source, setSource] = useState('mine');
-      useEffect(() => {
-        void (async () => {
-          try {
-            const r = await api('/papers?sort=deepread&limit=200');
-            setEntries((r.papers ?? []).filter((p) => p.has_analysis || p.has_agentero));
-          } catch {
-            setEntries([]);
-          }
-        })();
+      const [query, setQuery] = useState('');
+      const [reloadKey, setReloadKey] = useState(0);
+
+      const loadEntries = useCallback(async () => {
+        try {
+          const r = await api('/papers?sort=deepread&limit=200');
+          setEntries((r.papers ?? []).filter((p) => p.has_analysis || p.has_agentero));
+        } catch {
+          setEntries([]);
+        }
       }, []);
+
+      useEffect(() => { void loadEntries(); }, [loadEntries, reloadKey]);
       useEffect(() => {
         setMine(undefined);
         setAgent(undefined);
@@ -986,30 +996,61 @@ function mathToUnicode(text) {
         })();
         setSource(view.source === 'agentero' ? 'agentero' : 'mine');
         return () => { alive = false; };
-      }, [view?.arxivId, view?.source]);
+      }, [view?.arxivId, view?.source, reloadKey]);
+
       const cur = entries?.find((e) => e.arxiv_id === view?.arxivId);
       const pane = source === 'agentero' ? agent : mine;
+      const q = query.trim().toLowerCase();
+      const shown = entries === null
+        ? null
+        : q
+          ? entries.filter((e) => `${e.title ?? ''} ${e.title_zh ?? ''} ${e.arxiv_id}`.toLowerCase().includes(q))
+          : entries;
+
       return h('div', { className: 'arxiv-card' },
-        h('h3', { className: 'arxiv-title', style: { margin: 0 } }, '深读笔记 / Deep-Read Notes'),
+        h('div', { className: 'arxiv-row', style: { justifyContent: 'space-between' } },
+          h('h3', { className: 'arxiv-title', style: { margin: 0 } }, '深读笔记 / Deep-Read Notes'),
+          h('div', { className: 'arxiv-row', style: { gap: 6 } },
+            h('input', {
+              className: 'arxiv-input', value: query, style: { maxWidth: 260 },
+              onChange: (e) => setQuery(e.target.value),
+              placeholder: '🔍 检索标题 / 中文标题 / arXiv ID',
+            }),
+            h('button', {
+              className: 'arxiv-fb', type: 'button',
+              onClick: () => { setReloadKey((k) => k + 1); },
+              title: '重新读取笔记列表（paper-reader 生成完成后点这里）',
+            }, '🔄 刷新'),
+            view?.arxivId ? h(PaperReaderBtn, { arxivId: view.arxivId }) : null)),
         h('div', { className: 'arxiv-meta' },
           '📄 我的深读（调研生成的中文综合） · 📖 paper-reader 讲解（agentero 外部笔记，含图，只引用不合并）。左侧选择论文，右侧全宽阅读（KaTeX 公式）。'),
         h('div', { className: 'arxiv-notes-layout' },
           h('div', { className: 'arxiv-notes-list' },
             entries === null ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
               : entries.length === 0 ? h('div', { className: 'arxiv-sub' }, '暂无深读笔记（调研生成的深读会出现在这里）')
-                : entries.map((e) => h('button', {
-                    key: e.arxiv_id, type: 'button',
-                    className: 'arxiv-note-item',
-                    'data-on': String(e.arxiv_id === view?.arxivId),
-                    onClick: () => setView({ arxivId: e.arxiv_id, source: e.has_analysis ? 'mine' : 'agentero' }),
-                  },
-                    h('div', { className: 'arxiv-note-item-title' }, e.title_zh || e.title || e.arxiv_id),
-                    h('div', { className: 'arxiv-meta' },
-                      `${e.arxiv_id} ${e.has_analysis ? '📄' : ''}${e.has_agentero ? '📖' : ''}`)))),
+                : shown.length === 0 ? h('div', { className: 'arxiv-sub' }, `没有匹配「${query.trim()}」的笔记`)
+                  : shown.map((e) => h('button', {
+                      key: e.arxiv_id, type: 'button',
+                      className: 'arxiv-note-item',
+                      'data-on': String(e.arxiv_id === view?.arxivId),
+                      onClick: () => setView({ arxivId: e.arxiv_id, source: e.has_analysis ? 'mine' : 'agentero' }),
+                    },
+                      h('div', { className: 'arxiv-note-item-title' }, mathToUnicode(e.title_zh || e.title || e.arxiv_id)),
+                      e.title_zh && e.title
+                        ? h('div', { className: 'arxiv-meta', style: { opacity: 0.75 } }, e.title)
+                        : null,
+                      h('div', { className: 'arxiv-meta' },
+                        `${e.arxiv_id} ${e.has_analysis ? '📄' : ''}${e.has_agentero ? '📖' : ''}`)))),
           h('div', { className: 'arxiv-notes-view' },
             !view?.arxivId
               ? h('div', { className: 'arxiv-sub' }, '从左侧选择一篇论文查看笔记。')
               : h('div', null,
+                h('div', { style: { marginBottom: 8 } },
+                  h('div', { style: { fontWeight: 600 } },
+                    mathToUnicode(cur?.title_zh || cur?.title || view.arxivId)),
+                  cur?.title_zh && cur?.title
+                    ? h('div', { className: 'arxiv-meta' }, cur.title)
+                    : null),
                 h('div', { className: 'arxiv-row', style: { marginBottom: 8, gap: 6 } },
                   mine && !mine.err
                     ? h('button', { className: 'arxiv-chip', 'data-on': String(source === 'mine'), type: 'button', onClick: () => setSource('mine') }, '📄 我的深读')
@@ -1022,10 +1063,68 @@ function mathToUnicode(text) {
                     target: '_blank', rel: 'noopener',
                   }, 'arXiv ↗') : null),
                 pane === undefined ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
-                  : pane.err ? h('div', { className: 'arxiv-sub' }, `加载失败：${pane.err}`)
+                  : pane.err
+                    ? h('div', { className: 'arxiv-sub' },
+                        source === 'agentero'
+                          ? '这篇还没有 paper-reader 笔记（点右上「🧠 paper-reader 精读」派给精读会话）'
+                          : `加载失败：${pane.err}`)
                     : MarkdownText
                       ? h('div', { className: 'arxiv-note-page' }, h(MarkdownText, { text: pane.md ?? '' }))
                       : h('pre', { className: 'arxiv-note-pre' }, mathToUnicode(pane.md ?? ''))))));
+    }
+
+    /** 「🧠 paper-reader 精读」: make sure the paper sits in the agentero vault
+     * with a local PDF, then dispatch the whole reading job to the session that
+     * carries the paper-reader skill. The plugin never generates these notes
+     * itself — `agentero --help` states it does not run paper-reader — and by
+     * explicit user decision an existing NOTES.md is overwritten. */
+    function PaperReaderBtn({ arxivId }) {
+      const [state, setState] = useState('idle'); // idle | sending | sent | error
+      const [msg, setMsg] = useState('');
+      const run = async () => {
+        setState('sending'); setMsg('');
+        try {
+          const r = await api('/paper-reader/prepare', { method: 'POST', body: { arxiv_id: arxivId } });
+          setState('sent');
+          setMsg(r.sessionTitle ? `已派给「${r.sessionTitle}」` : '已派给精读会话');
+        } catch (e) {
+          setState('error');
+          setMsg(e.message);
+        }
+      };
+      return h('span', { className: 'arxiv-row', style: { gap: 6 } },
+        h('button', {
+          className: 'arxiv-fb', type: 'button', disabled: state === 'sending',
+          onClick: () => void run(),
+          title: '先加入 agentero 文献库并确保本地 PDF，再派给 paper-reader 会话生成讲义式 NOTES.md（会覆盖同名笔记）',
+        }, state === 'sending' ? '⏳ 派发中…' : state === 'sent' ? '🧠 已派发' : '🧠 paper-reader 精读'),
+        msg
+          ? h('span', { className: state === 'error' ? 'arxiv-error' : 'arxiv-meta' }, msg)
+          : null);
+    }
+
+    /**
+     * Deep-read block on a paper card: Chinese bullet summary plus ONE entry
+     * into the 深读笔记 page (both note sources live there), and the
+     * paper-reader dispatch button.
+     */
+    function AnalysisBlock({ arxivId, summary, onOpenNotes }) {
+      const lines = String(summary ?? '').split('\n').filter(Boolean);
+      return h('div', { className: 'arxiv-abs' },
+        h('div', { className: 'arxiv-deepread' },
+          h('div', { style: { fontWeight: 600, marginBottom: 4 } }, '📄 深读要点'),
+          lines.length
+            ? lines.map((line, i) => h('div', { key: i, style: { paddingLeft: 8 } }, mathToUnicode(line)))
+            : h('div', { className: 'arxiv-meta', style: { paddingLeft: 8 } },
+                '（暂无深读摘要，点右侧按钮查看/生成完整笔记）'),
+          h('div', { className: 'arxiv-row', style: { marginTop: 6, gap: 6 } },
+            onOpenNotes
+              ? h('button', {
+                  className: 'arxiv-fb', type: 'button', onClick: onOpenNotes,
+                  title: '在「深读笔记」页全宽阅读（KaTeX 公式 + paper-reader 讲解）',
+                }, '📄 查看深读笔记 →')
+              : null,
+            h(PaperReaderBtn, { arxivId }))));
     }
 
     function AnalysisBlock({ arxivId, summary, analysisPath, onOpenNotes }) {
