@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui10-pagination';
+    const BUILD = '0.5.2-ui11-window-gate';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -535,7 +535,8 @@ function mathToUnicode(text) {
                 `${i + 1}. ${p.title}`),
               p.title_zh ? h('div', { className: 'arxiv-title-zh' }, mathToUnicode(p.title_zh)) : null,
               h('div', { className: 'arxiv-meta' },
-                `${(p.categories || []).join(', ')} · 相关度 ${p.score ?? '-'}/40 · ${p.arxiv_id}`),
+                `${(p.categories || []).join(', ')} · 相关度 ${p.score ?? '-'}/40 · ${p.arxiv_id}` +
+                (p.published ? ` · 投稿 ${utc8fmt(p.published).slice(0, 10)}` : '')),
               h('div', { className: 'arxiv-quote' }, mathToUnicode(p.abstract)),
               p.abstract_zh
                 ? h('div', { className: 'arxiv-quote arxiv-quote-zh' }, mathToUnicode(p.abstract_zh))
