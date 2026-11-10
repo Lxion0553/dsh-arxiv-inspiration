@@ -17,7 +17,7 @@ window.__ModuleLoader__.load({
     // The platform's own markdown renderer (KaTeX math, tables, footnotes).
     // Guarded: an older shell without the module keeps the unicode fallback.
     /** Bumped whenever client UI changes, so the settings page shows which bundle the browser runs. */
-    const BUILD = '0.5.2-ui14-mdsummary';
+    const BUILD = '0.5.2-ui15-hasnote';
     let MarkdownText = null;
     try {
       MarkdownText = require('@deepseek-ai/dsh-client-ui-primitives').MarkdownText ?? null;
@@ -1068,9 +1068,14 @@ function mathToUnicode(text) {
                 pane === undefined ? h('div', { className: 'arxiv-sub' }, '加载中… / loading')
                   : pane.err
                     ? h('div', { className: 'arxiv-sub' },
-                        source === 'agentero'
-                          ? '这篇还没有 paper-reader 笔记（点右上「🧠 paper-reader 精读」派给精读会话）'
-                          : `加载失败：${pane.err}`)
+                        // Both sources missing ⇒ no note exists at all, which is
+                        // the normal state for papers never deep-read: guide to
+                        // the dispatch button instead of showing a load error.
+                        mine?.err && agent?.err
+                          ? '这篇还没有深读笔记。点右上「🧠 paper-reader 精读」生成一份。'
+                          : source === 'agentero'
+                            ? '这篇还没有 paper-reader 笔记（点右上「🧠 paper-reader 精读」派给精读会话）'
+                            : `加载失败：${pane.err}`)
                     : MarkdownText
                       ? h('div', { className: 'arxiv-note-page' }, h(MarkdownText, { text: pane.md ?? '' }))
                       : h('pre', { className: 'arxiv-note-pre' }, mathToUnicode(pane.md ?? ''))))));
