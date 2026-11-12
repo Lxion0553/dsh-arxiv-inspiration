@@ -1,6 +1,6 @@
 {
   "name": "dsh-arxiv-inspiration",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "type": "module",
   "description": "arXiv research-inspiration for DSH: on-demand surveys filtered by a local interest knowledge base and LLM ranking, with a settings-page UI, accumulating paper library, deep-read notes, and profile evolution.",
   "exports": {
